@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @TableName("t_station")
 public class StationEntity {
 
-    @TableId(type = IdType.INPUT)
+    @TableId(type = IdType.ASSIGN_ID)
     private String stationId;
 
     private String stationName;

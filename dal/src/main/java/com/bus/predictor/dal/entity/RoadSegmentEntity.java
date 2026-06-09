@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @TableName("t_road_segment")
 public class RoadSegmentEntity {
 
-    @TableId(type = IdType.INPUT)
+    @TableId(type = IdType.ASSIGN_ID)
     private String segmentId;
 
     private String startNode;

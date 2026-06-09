@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @TableName("t_vehicle_info")
 public class VehicleInfoEntity {
 
-    @TableId(type = IdType.INPUT)
+    @TableId(type = IdType.ASSIGN_ID)
     private String vehicleId;
 
     private String plateNumber;
