@@ -1,0 +1,23 @@
+server:
+  port: 8081
+
+gateway:
+  tcp:
+    port: 9090
+    boss-threads: 1
+    worker-threads: 0
+    reader-idle-seconds: 300
+
+kafka:
+  bootstrap-servers: localhost:9092
+  producer:
+    acks: all
+    retries: 3
+    batch-size: 16384
+    linger-ms: 5
+    buffer-memory: 33554432
+
+logging:
+  level:
+    com.bus.predictor: DEBUG
+    io.netty: WARN
