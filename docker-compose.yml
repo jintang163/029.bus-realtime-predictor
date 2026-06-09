@@ -93,6 +93,8 @@ services:
     environment:
       SPRING_REDIS_HOST: redis
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bus_predictor?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+      AMAP_KEY: ${AMAP_KEY:-}
+      AMAP_ENABLED: ${AMAP_ENABLED:-false}
 
   simulator:
     build:

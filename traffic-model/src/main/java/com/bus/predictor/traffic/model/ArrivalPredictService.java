@@ -17,11 +17,14 @@ public class ArrivalPredictService {
 
     private final VehiclePositionRedisDao vehiclePositionRedisDao;
     private final CongestionModel congestionModel;
+    private final RoadSegmentManager roadSegmentManager;
 
     public ArrivalPredictService(VehiclePositionRedisDao vehiclePositionRedisDao,
-                                 CongestionModel congestionModel) {
+                                 CongestionModel congestionModel,
+                                 RoadSegmentManager roadSegmentManager) {
         this.vehiclePositionRedisDao = vehiclePositionRedisDao;
         this.congestionModel = congestionModel;
+        this.roadSegmentManager = roadSegmentManager;
     }
 
     public List<ArrivalPrediction> predict(String routeId, String vehicleId) {
@@ -87,6 +90,29 @@ public class ArrivalPredictService {
 
     private List<RouteStationInfo> getRouteStations(String routeId) {
         List<RouteStationInfo> stations = new ArrayList<>();
+
+        if (roadSegmentManager != null) {
+            List<SegmentInfo> segments = roadSegmentManager.getAllSegments();
+            List<SegmentInfo> routeSegments = new ArrayList<>();
+            for (SegmentInfo seg : segments) {
+                if (routeId.equals(seg.getLineId())) {
+                    routeSegments.add(seg);
+                }
+            }
+            if (!routeSegments.isEmpty()) {
+                routeSegments.sort((a, b) -> Integer.compare(a.getStationOrder(), b.getStationOrder()));
+                for (SegmentInfo seg : routeSegments) {
+                    stations.add(new RouteStationInfo(
+                            seg.getStartStationId(), seg.getStartStationName(),
+                            seg.getStationOrder(), seg.getStartLng(), seg.getStartLat()));
+                }
+                SegmentInfo last = routeSegments.get(routeSegments.size() - 1);
+                stations.add(new RouteStationInfo(
+                        last.getEndStationId(), last.getEndStationName(),
+                        last.getStationOrder() + 1, last.getEndLng(), last.getEndLat()));
+                return stations;
+            }
+        }
 
         stations.add(new RouteStationInfo("S001", "火车站", 1, 116.407526, 39.904030));
         stations.add(new RouteStationInfo("S002", "中山路", 2, 116.410526, 39.908030));

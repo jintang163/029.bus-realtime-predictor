@@ -129,6 +129,20 @@ CREATE TABLE IF NOT EXISTS t_schedule (
     INDEX idx_vehicle_date (vehicle_id, schedule_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS t_segment_speed_history (
+    id BIGINT PRIMARY KEY,
+    segment_id VARCHAR(64) NOT NULL,
+    line_id VARCHAR(32),
+    speed DOUBLE,
+    congestion_factor DOUBLE,
+    speed_source INT DEFAULT 0,
+    record_time DATETIME NOT NULL,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_segment_time (segment_id, record_time),
+    INDEX idx_line_id (line_id),
+    INDEX idx_record_time (record_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 INSERT IGNORE INTO t_line (line_id, line_name, line_code, direction, start_station, end_station, total_distance, station_count, first_bus_time, last_bus_time, interval_minutes, status) VALUES
 ('L001', '1路', '001', 0, '火车站', '科技园', 12.5, 5, 600, 2200, 8, 1),
 ('L002', '2路', '002', 0, '西客站', '东湖公园', 18.2, 8, 600, 2200, 10, 1),

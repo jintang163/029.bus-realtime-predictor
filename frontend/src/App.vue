@@ -23,6 +23,10 @@
           <el-icon><Timer /></el-icon>
           <span>到站预测</span>
         </el-menu-item>
+        <el-menu-item index="/traffic">
+          <el-icon><DataLine /></el-icon>
+          <span>路况热力图</span>
+        </el-menu-item>
         <el-sub-menu index="route-mgmt">
           <template #title>
             <el-icon><Guide /></el-icon>
@@ -47,7 +51,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Monitor, Location, Timer, Guide, Grid } from '@element-plus/icons-vue'
+import { Monitor, Location, Timer, DataLine, Guide, Grid } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const currentRoute = computed(() => route.path)

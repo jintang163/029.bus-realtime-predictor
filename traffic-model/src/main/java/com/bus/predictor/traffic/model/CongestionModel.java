@@ -16,9 +16,12 @@ public class CongestionModel {
     private static final double MAX_CONGESTION = 5.0;
 
     private final RoadSegmentRedisDao roadSegmentRedisDao;
+    private final RoadSegmentManager roadSegmentManager;
 
-    public CongestionModel(RoadSegmentRedisDao roadSegmentRedisDao) {
+    public CongestionModel(RoadSegmentRedisDao roadSegmentRedisDao,
+                           RoadSegmentManager roadSegmentManager) {
         this.roadSegmentRedisDao = roadSegmentRedisDao;
+        this.roadSegmentManager = roadSegmentManager;
     }
 
     public double calculateCongestion(double startLat, double startLng,
@@ -33,6 +36,21 @@ public class CongestionModel {
                 + weatherFactor * 0.2;
 
         return Math.max(MIN_CONGESTION, Math.min(MAX_CONGESTION, congestion));
+    }
+
+    public double calculateSegmentCongestion(String segmentId) {
+        Double congestion = roadSegmentRedisDao.getSegmentCongestion(segmentId);
+        if (congestion != null) {
+            return Math.max(MIN_CONGESTION, Math.min(MAX_CONGESTION, congestion));
+        }
+
+        SegmentInfo seg = roadSegmentManager.getSegment(segmentId);
+        if (seg != null) {
+            return calculateCongestion(seg.getStartLat(), seg.getStartLng(),
+                    seg.getEndLat(), seg.getEndLng());
+        }
+
+        return 1.5;
     }
 
     private double getRealTimeFactor(String geoHash) {

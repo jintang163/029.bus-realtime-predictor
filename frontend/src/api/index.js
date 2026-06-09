@@ -29,6 +29,15 @@ export const vehicleApi = {
   getTrafficSegment: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/speed`)
 }
 
+export const trafficApi = {
+  getHeatmap: () => request.get('/api/traffic/heatmap'),
+  getSegments: () => request.get('/api/traffic/segments'),
+  getSegmentDetail: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/detail`),
+  getSegmentHistory: (segmentId, startTime) => request.get(`/api/traffic/segment/${segmentId}/history`, { params: { startTime } }),
+  getSegmentComparison: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/comparison`),
+  getSegmentSpeed: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/speed`)
+}
+
 export const lineApi = {
   list: () => request.get('/api/route/line/list'),
   getById: (lineId) => request.get(`/api/route/line/${lineId}`),

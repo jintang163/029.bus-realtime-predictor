@@ -1,6 +1,6 @@
 # 🚌 公交实时到站预报系统 (Bus Realtime Predictor)
 
-结合GPS定位、路况拥堵模型、电子站牌与线路管理，准确预测公交到站剩余时间的全栈系统。
+结合GPS定位、路况拥堵模型、实时路况融合、电子站牌与线路管理，准确预测公交到站剩余时间的全栈系统。
 
 ## 系统架构
 
@@ -20,13 +20,21 @@
                             ┌──────────────┐              ┌──────────────────┐
                             │  Web API      │  WebSocket  │  线路管理 API      │
                             │  :8080        │ ──────────→ │  :8083            │
-                            └──────────────┘              └──────────────────┘
-                                    │                               │
-                                    ↓                               ↓
-                            ┌──────────────┐              ┌──────────────────┐
-                            │  实时监控大屏  │              │  线路管理后台      │
-                            │  :3000       │              │  :3001           │
-                            └──────────────┘              └──────────────────┘
+                            └──────┬───────┘              └──────────────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ↓              ↓              ↓
+              ┌───────────┐ ┌───────────┐ ┌───────────┐
+              │ 高德路况API │ │ 路段速度   │ │ 历史速度   │
+              │ (每2分钟)   │ │ EMA计算    │ │ MySQL记录  │
+              └───────────┘ └───────────┘ └───────────┘
+                                   │
+                                   ↓
+                        ┌──────────────────┐
+                        │  统一前端 :3000   │
+                        │  Vue3+ECharts+   │
+                        │  Leaflet热力图    │
+                        └──────────────────┘
 ```
 
 ## 模块说明
@@ -35,14 +43,14 @@
 |------|------|------|
 | `common` | - | 公共模型、常量、工具类 |
 | `dal` | - | 数据访问层（MySQL Mapper + Redis DAO） |
-| `traffic-model` | - | 路况拥堵模型、到站预测算法 |
+| `traffic-model` | - | 路况拥堵模型、到站预测算法、高德路况API、路段管理 |
 | `gateway` | 9090/8081 | Netty TCP网关，接收车载终端GPS上报 |
 | `standalone-processor` | 8082 | Spring Boot流处理器（Kafka消费→清洗→Redis/MySQL） |
 | `flink-processor` | - | Flink流处理器（生产环境替代standalone-processor） |
 | `route-management` | 8083 | 线路/站点/排班管理 + 电子站牌API + Redis缓存 + Excel排班导入 |
 | `simulator` | - | 车载终端模拟器，模拟多辆车GPS上报 |
-| `web-api` | 8080 | 实时监控API + WebSocket实时推送 |
-| `frontend` | 3000 | Vue3+ElementPlus+Leaflet统一管理前端（实时监控+线路管理+电子站牌） |
+| `web-api` | 8080 | 实时监控API + WebSocket实时推送 + 路况热力图WebSocket |
+| `frontend` | 3000 | Vue3+ElementPlus+Leaflet+ECharts统一前端（实时监控+路况热力图+线路管理+电子站牌） |
 
 ## 数据流全链路
 
@@ -60,26 +68,30 @@
    Key: bus:vehicle:pos:{vehicleId} → VehiclePosition JSON (TTL 5min)
    Key: bus:vehicle:status:{vehicleId} → status code (TTL 5min)
    Key: bus:vehicle:online → Set<vehicleId>
-   Key: bus:road:speed:{geoHash} → 当前速度 (TTL 10min)
-   Key: bus:road:congestion:{geoHash} → 拥堵系数 (TTL 10min)
+   Key: bus:road:speed:{segmentId} → 当前速度 (TTL 10min)
+   Key: bus:road:congestion:{segmentId} → 拥堵系数 (TTL 10min)
 
 5. Processor → MySQL t_trajectory_record
    异步批量写入历史轨迹
 
-6. Web API ← Redis读取
-   REST接口查询车辆位置/状态/预测
+6. TrafficRefreshScheduler (每2分钟)
+   高德路况API → 路段速度融合(GPS+第三方 0.6:0.4) → EMA平滑 → Redis
+   → 历史快照写入MySQL t_segment_speed_history
 
-7. Web API → WebSocket → Frontend(:3000)
-   每2秒推送在线车辆实时位置
+7. RoadSpeedCalculator (每1分钟)
+   在线车辆GPS速度 → 匹配最近路段 → EMA融合 → Redis
 
-8. Route-Management → MySQL + Redis
-   线路/站点/排班CRUD → Redis缓存(line:{lineId}:stations)
-   电子站牌API → 查询站点信息及途经线路
-   Excel排班批量导入(Apache POI)
+8. Web API ← Redis读取
+   REST接口查询车辆位置/状态/预测/路况热力图
 
-9. Route-Admin(:3001) → Route-Management(:8083)
-   Vue3 + Element Plus + Leaflet地图管理后台
-   地图拖拽标注站点坐标 → 保存至MySQL(SPATIAL INDEX)
+9. Web API → WebSocket → Frontend(:3000)
+   /ws/vehicle → 每2秒推送在线车辆实时位置
+   /ws/traffic → 每10秒推送路况热力图数据
+
+10. Route-Management → MySQL + Redis
+    线路/站点/排班CRUD → Redis缓存(line:{lineId}:stations)
+    电子站牌API → 查询站点信息及途经线路
+    Excel排班批量导入(Apache POI)
 ```
 
 ## 快速启动
@@ -96,11 +108,8 @@
 # 启动所有服务
 docker-compose up -d
 
-# 访问实时监控大屏
+# 访问前端管理平台
 open http://localhost:3000
-
-# 访问线路管理后台
-open http://localhost:3001
 ```
 
 ### 方式二：本地开发启动
@@ -143,14 +152,24 @@ java -jar web-api/target/web-api-1.0.0-SNAPSHOT.jar
 java -jar simulator/target/simulator-1.0.0-SNAPSHOT.jar
 ```
 
-**5. 访问前端**
+**5. 启动前端开发服务器**
 
 ```bash
-# 实时监控大屏
-open frontend/index.html
+cd frontend
+npm install
+npm run dev
 
-# 线路管理后台
-open route-admin/index.html
+# 访问 http://localhost:3000
+# Vite代理已配置: /api/vehicle→:8080, /api/route→:8083, /ws→:8080
+```
+
+### 高德路况API配置（可选）
+
+```bash
+# 设置环境变量启用高德路况数据融合
+export AMAP_KEY=your_amap_web_service_key
+export AMAP_ENABLED=true
+java -jar web-api/target/web-api-1.0.0-SNAPSHOT.jar
 ```
 
 ## API 接口
@@ -164,8 +183,14 @@ open route-admin/index.html
 | GET | `/api/vehicle/status/{vehicleId}` | 获取车辆在线状态 |
 | GET | `/api/vehicle/online/count` | 获取在线车辆数量 |
 | GET | `/api/vehicle/prediction/{vehicleId}?routeId=R001` | 到站时间预测 |
+| GET | `/api/traffic/heatmap` | 获取全城路况热力图数据 |
+| GET | `/api/traffic/segments` | 获取所有路段速度信息 |
+| GET | `/api/traffic/segment/{segmentId}/detail` | 路段详细信息 |
 | GET | `/api/traffic/segment/{segmentId}/speed` | 路段速度与拥堵系数 |
+| GET | `/api/traffic/segment/{segmentId}/history?startTime=...` | 路段历史速度数据 |
+| GET | `/api/traffic/segment/{segmentId}/comparison` | 路段实时vs历史对比 |
 | WS | `ws://localhost:8080/ws/vehicle` | 实时推送车辆位置（每2秒） |
+| WS | `ws://localhost:8080/ws/traffic` | 实时推送路况热力图（每10秒） |
 
 ### 线路管理 (Route Management :8083)
 
@@ -275,6 +300,7 @@ open route-admin/index.html
 | `t_trajectory_record` | GPS历史轨迹 |
 | `t_road_segment` | 路段信息 |
 | `t_route_station` | 路线站点(旧) |
+| `t_segment_speed_history` | 路段速度历史快照(每2分钟记录) |
 
 ## Redis缓存策略
 
@@ -283,8 +309,8 @@ open route-admin/index.html
 | `bus:vehicle:pos:{vehicleId}` | 5min | 车辆最新位置 |
 | `bus:vehicle:status:{vehicleId}` | 5min | 车辆状态 |
 | `bus:vehicle:online` | - | 在线车辆集合 |
-| `bus:road:speed:{geoHash}` | 10min | 路段实时速度 |
-| `bus:road:congestion:{geoHash}` | 10min | 路段拥堵系数 |
+| `bus:road:speed:{segmentId}` | 10min | 路段实时速度(m/s) |
+| `bus:road:congestion:{segmentId}` | 10min | 路段拥堵系数(1~5) |
 | `line:{lineId}:stations` | 24h | 线路站点静态数据 |
 
 ## 拥堵模型
@@ -296,6 +322,17 @@ congestion = realTimeFactor × 0.5 + timeOfDayFactor × 0.3 + weatherFactor × 0
 - **realTimeFactor**: 基于Redis中路段实时速度，自由流速度/当前速度
 - **timeOfDayFactor**: 时段因子（早高峰7-9点=2.5, 晚高峰17-19点=2.5, 平峰=1.0）
 - **weatherFactor**: 天气因子（预留，当前默认1.0）
+
+### 路段速度融合
+
+```
+每2分钟执行:
+1. 调用高德路况API获取第三方速度(可选)
+2. GPS浮动车速度(60%) + 第三方速度(40%) → 融合速度
+3. EMA平滑: updatedSpeed = α×融合速度 + (1-α)×历史速度
+4. 拥堵系数 = 自由流速度 / max(平滑速度, 0.5)
+5. 写入Redis + MySQL历史快照
+```
 
 到站预测：
 
@@ -332,7 +369,7 @@ GPS Body:
 | 流处理 | Flink 1.17 / Spring Boot (standalone) |
 | 缓存 | Redis 7 (Jedis 4.3) |
 | 数据库 | MySQL 8.0 + MyBatis-Plus 3.5 + SPATIAL INDEX |
+| 路况融合 | 高德路况API + GPS浮动车 + EMA平滑 |
 | 线路管理 | Spring Boot 2.7 + Apache POI 5.2 |
 | Web API | Spring Boot 2.7 + WebSocket |
-| 实时大屏 | HTML5 + CSS3 + Canvas + WebSocket |
-| 管理后台 | Vue 3 + Element Plus + Leaflet |
+| 运维大屏 | Vue 3 + Element Plus + ECharts 5 + Leaflet |

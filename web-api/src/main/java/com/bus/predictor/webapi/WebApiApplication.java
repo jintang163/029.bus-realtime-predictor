@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = "com.bus.predictor")
 @EnableScheduling
-@MapperScan("com.bus.predictor.dal.mapper")
+@MapperScan({"com.bus.predictor.dal.mapper", "com.bus.predictor.route.mapper"})
 public class WebApiApplication {
 
     public static void main(String[] args) {

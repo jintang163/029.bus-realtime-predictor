@@ -24,6 +24,12 @@ const routes = [
     meta: { title: '到站预测', icon: 'Timer' }
   },
   {
+    path: '/traffic',
+    name: 'TrafficHeatmap',
+    component: () => import('../views/TrafficHeatmap.vue'),
+    meta: { title: '路况热力图', icon: 'DataLine' }
+  },
+  {
     path: '/line',
     name: 'LineManagement',
     component: () => import('../views/LineManagement.vue'),

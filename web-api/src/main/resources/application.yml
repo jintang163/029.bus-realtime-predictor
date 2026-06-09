@@ -19,3 +19,8 @@ mybatis-plus:
 logging:
   level:
     com.bus.predictor: DEBUG
+
+traffic:
+  amap:
+    key: ${AMAP_KEY:}
+    enabled: ${AMAP_ENABLED:false}
