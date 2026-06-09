@@ -1,0 +1,22 @@
+FROM maven:3.9-eclipse-temurin-11 AS builder
+WORKDIR /app
+COPY pom.xml .
+COPY common/pom.xml common/
+COPY dal/pom.xml dal/
+COPY traffic-model/pom.xml traffic-model/
+COPY route-management/pom.xml route-management/
+RUN mvn -pl common,dal,traffic-model -am dependency:go-offline -B
+COPY common/ common/
+RUN mvn -pl common -am install -DskipTests -B
+COPY dal/ dal/
+RUN mvn -pl dal -am install -DskipTests -B
+COPY traffic-model/ traffic-model/
+RUN mvn -pl traffic-model -am install -DskipTests -B
+COPY route-management/ route-management/
+RUN mvn -pl route-management -am package -DskipTests -B
+
+FROM eclipse-temurin:11-jre
+WORKDIR /app
+COPY --from=builder /app/route-management/target/route-management-*.jar app.jar
+EXPOSE 8083
+ENTRYPOINT ["java", "-jar", "app.jar"]

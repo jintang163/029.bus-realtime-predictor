@@ -68,6 +68,19 @@ services:
       SPRING_REDIS_HOST: redis
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bus_predictor?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
 
+  route-management:
+    build:
+      context: .
+      dockerfile: Dockerfile.route
+    ports:
+      - "8083:8083"
+    depends_on:
+      - redis
+      - mysql
+    environment:
+      SPRING_REDIS_HOST: redis
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bus_predictor?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+
   web-api:
     build:
       context: .
@@ -99,6 +112,15 @@ services:
       - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - web-api
+
+  route-admin:
+    image: nginx:alpine
+    ports:
+      - "3001:80"
+    volumes:
+      - ./route-admin:/usr/share/nginx/html:ro
+    depends_on:
+      - route-management
 
 volumes:
   mysql-data:

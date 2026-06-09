@@ -63,3 +63,99 @@ CREATE TABLE IF NOT EXISTS t_route_station (
     INDEX idx_station_id (station_id),
     UNIQUE KEY uk_route_station_order (route_id, station_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_line (
+    line_id VARCHAR(32) PRIMARY KEY,
+    line_name VARCHAR(100) NOT NULL,
+    line_code VARCHAR(20),
+    direction INT DEFAULT 0,
+    start_station VARCHAR(100),
+    end_station VARCHAR(100),
+    total_distance DOUBLE DEFAULT 0,
+    station_count INT DEFAULT 0,
+    first_bus_time INT DEFAULT 600,
+    last_bus_time INT DEFAULT 2200,
+    interval_minutes INT DEFAULT 10,
+    status INT DEFAULT 1,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_line_code (line_code),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_station (
+    station_id VARCHAR(32) PRIMARY KEY,
+    station_name VARCHAR(100) NOT NULL,
+    station_code VARCHAR(20),
+    longitude DOUBLE NOT NULL,
+    latitude DOUBLE NOT NULL,
+    district VARCHAR(50),
+    street VARCHAR(100),
+    station_type INT DEFAULT 0,
+    remark VARCHAR(500),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    SPATIAL INDEX idx_location ((ST_GeomFromText(CONCAT('POINT(', longitude, ' ', latitude, ')'), 4326)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_line_station (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    line_id VARCHAR(32) NOT NULL,
+    station_id VARCHAR(32) NOT NULL,
+    station_order INT NOT NULL,
+    distance_from_start DOUBLE DEFAULT 0,
+    distance_to_next DOUBLE DEFAULT 0,
+    estimated_seconds INT DEFAULT 0,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_line_id (line_id),
+    INDEX idx_station_id (station_id),
+    UNIQUE KEY uk_line_station_order (line_id, station_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_schedule (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    line_id VARCHAR(32) NOT NULL,
+    vehicle_id VARCHAR(32) NOT NULL,
+    driver_name VARCHAR(50),
+    schedule_date DATE NOT NULL,
+    departure_time INT NOT NULL,
+    trip_index INT DEFAULT 1,
+    direction INT DEFAULT 0,
+    status INT DEFAULT 1,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_line_date (line_id, schedule_date),
+    INDEX idx_vehicle_date (vehicle_id, schedule_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO t_line (line_id, line_name, line_code, direction, start_station, end_station, total_distance, station_count, first_bus_time, last_bus_time, interval_minutes, status) VALUES
+('L001', '1路', '001', 0, '火车站', '科技园', 12.5, 5, 600, 2200, 8, 1),
+('L002', '2路', '002', 0, '西客站', '东湖公园', 18.2, 8, 600, 2200, 10, 1),
+('L003', '快速1号', 'K001', 0, '市政府', '高铁站', 22.0, 6, 630, 2100, 5, 1);
+
+INSERT IGNORE INTO t_station (station_id, station_name, station_code, longitude, latitude, district, street, station_type) VALUES
+('S001', '火车站', 'STA001', 116.407526, 39.904030, '东城区', '北京站前街', 1),
+('S002', '中山路', 'STA002', 116.410526, 39.908030, '东城区', '中山路', 0),
+('S003', '人民广场', 'STA003', 116.415526, 39.912030, '东城区', '长安街', 1),
+('S004', '市政府', 'STA004', 116.420526, 39.916030, '西城区', '府右街', 0),
+('S005', '科技园', 'STA005', 116.425526, 39.920030, '海淀区', '中关村大街', 1),
+('S006', '西客站', 'STA006', 116.381000, 39.925000, '丰台区', '莲花池东路', 1),
+('S007', '复兴门', 'STA007', 116.388000, 39.918000, '西城区', '复兴门外大街', 0),
+('S008', '东湖公园', 'STA008', 116.405000, 39.940000, '朝阳区', '东湖路', 1),
+('S009', '高铁站', 'STA009', 116.378000, 39.865000, '丰台区', '站前街', 1),
+('S010', '三元桥', 'STA010', 116.455000, 39.960000, '朝阳区', '三环', 0);
+
+INSERT IGNORE INTO t_line_station (line_id, station_id, station_order, distance_from_start, distance_to_next, estimated_seconds) VALUES
+('L001', 'S001', 1, 0, 850, 120),
+('L001', 'S002', 2, 850, 920, 130),
+('L001', 'S003', 3, 1770, 1100, 160),
+('L001', 'S004', 4, 2870, 780, 110),
+('L001', 'S005', 5, 3650, 0, 0),
+('L002', 'S006', 1, 0, 1200, 170),
+('L002', 'S007', 2, 1200, 980, 140),
+('L002', 'S003', 3, 2180, 1100, 155),
+('L002', 'S008', 4, 3280, 0, 0),
+('L003', 'S004', 1, 0, 2200, 180),
+('L003', 'S003', 2, 2200, 3500, 260),
+('L003', 'S009', 3, 5700, 0, 0);

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>公交线路与站点管理系统</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #app { height: 100%; font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif; }
+    .layout { display: flex; height: 100%; }
+    .sidebar {
+      width: 200px; min-width: 200px; background: linear-gradient(180deg, #1a3a5c 0%, #0d2137 100%);
+      color: #fff; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: center;
+    }
+    .sidebar-header h2 { font-size: 16px; font-weight: 600; letter-spacing: 1px; }
+    .sidebar-header p { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 4px; }
+    .sidebar-menu { flex: 1; padding: 8px 0; }
+    .sidebar-menu .menu-item {
+      display: flex; align-items: center; padding: 14px 20px; cursor: pointer;
+      transition: all 0.2s; font-size: 14px; color: rgba(255,255,255,0.7);
+      border-left: 3px solid transparent; margin: 2px 0;
+    }
+    .sidebar-menu .menu-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+    .sidebar-menu .menu-item.active {
+      background: rgba(64,158,255,0.15); color: #409EFF;
+      border-left-color: #409EFF; font-weight: 500;
+    }
+    .sidebar-menu .menu-item .icon { margin-right: 10px; font-size: 16px; width: 20px; text-align: center; }
+    .main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f0f2f5; }
+    .top-bar {
+      height: 50px; background: #fff; border-bottom: 1px solid #e8eaec;
+      display: flex; align-items: center; padding: 0 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .top-bar h3 { font-size: 15px; color: #303133; font-weight: 500; }
+    .content-area { flex: 1; padding: 16px; overflow: auto; }
+    .card { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .el-table { font-size: 13px; }
+    .split-panel { display: flex; gap: 16px; height: calc(100vh - 130px); }
+    .split-left { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .split-right { width: 380px; min-width: 320px; display: flex; flex-direction: column; }
+    .split-right .card { flex: 1; overflow: auto; }
+    #station-map, #stopboard-map { width: 100%; height: 400px; border-radius: 6px; z-index: 1; }
+    .station-form-map { width: 100%; height: 300px; border-radius: 6px; z-index: 1; margin-top: 8px; }
+    .station-info-card { margin-bottom: 16px; }
+    .line-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: #fff; margin: 3px; }
+    .nearby-result { margin-top: 12px; }
+    .schedule-upload { display: inline-block; }
+    .el-dialog__body { padding-top: 10px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>🚌 公交管理系统</h2>
+        <p>线路 &amp; 站点管理</p>
+      </div>
+      <div class="sidebar-menu">
+        <div class="menu-item" :class="{active: activeTab==='line'}" @click="activeTab='line'">
+          <span class="icon">🛤️</span> 线路管理
+        </div>
+        <div class="menu-item" :class="{active: activeTab==='station'}" @click="activeTab='station'">
+          <span class="icon">📍</span> 站点管理
+        </div>
+        <div class="menu-item" :class="{active: activeTab==='schedule'}" @click="activeTab='schedule'">
+          <span class="icon">📋</span> 排班管理
+        </div>
+        <div class="menu-item" :class="{active: activeTab==='stopboard'}" @click="activeTab='stopboard'">
+          <span class="icon">🖥️</span> 电子站牌
+        </div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="top-bar">
+        <h3>{{ tabTitle }}</h3>
+      </div>
+      <div class="content-area">
+
+        <!-- ========== 线路管理 ========== -->
+        <div v-if="activeTab==='line'">
+          <div class="split-panel">
+            <div class="split-left">
+              <div class="card" style="flex:1;display:flex;flex-direction:column;">
+                <div class="toolbar">
+                  <el-button type="primary" @click="openLineDialog(null)">新增线路</el-button>
+                  <el-button @click="refreshLineCache" :loading="cacheRefreshing">刷新缓存</el-button>
+                  <el-button @click="fetchLines">刷新列表</el-button>
+                </div>
+                <el-table :data="lines" stripe highlight-current-row @current-change="onLineSelect"
+                  style="flex:1;" max-height="calc(100vh - 230px)" v-loading="lineLoading">
+                  <el-table-column prop="lineId" label="线路ID" width="100" />
+                  <el-table-column prop="lineName" label="线路名称" width="140" />
+                  <el-table-column prop="lineCode" label="线路编码" width="100" />
+                  <el-table-column prop="direction" label="方向" width="70">
+                    <template #default="{row}">{{ row.direction===1?'上行':'下行' }}</template>
+                  </el-table-column>
+                  <el-table-column prop="startStation" label="起始站" width="100" />
+                  <el-table-column prop="endStation" label="终点站" width="100" />
+                  <el-table-column prop="totalDistance" label="总里程(km)" width="100" />
+                  <el-table-column prop="stationCount" label="站点数" width="80" />
+                  <el-table-column label="首班/末班" width="120">
+                    <template #default="{row}">{{ formatTime(row.firstBusTime) }} / {{ formatTime(row.lastBusTime) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="intervalMinutes" label="间隔(分)" width="90" />
+                  <el-table-column prop="status" label="状态" width="80">
+                    <template #default="{row}">
+                      <el-tag :type="row.status===1?'success':'info'" size="small">{{ row.status===1?'运营中':'停运' }}</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="140" fixed="right">
+                    <template #default="{row}">
+                      <el-button link type="primary" @click="openLineDialog(row)">编辑</el-button>
+                      <el-button link type="danger" @click="deleteLine(row)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+            </div>
+            <div class="split-right">
+              <div class="card">
+                <h4 style="margin-bottom:12px;font-size:14px;color:#303133;">
+                  {{ selectedLine ? selectedLine.lineName + ' - 途经站点' : '请选择线路查看站点' }}
+                </h4>
+                <el-table v-if="lineStations.length" :data="lineStations" stripe size="small" max-height="calc(100vh - 230px)">
+                  <el-table-column prop="stationOrder" label="序号" width="55" />
+                  <el-table-column prop="stationName" label="站点名称" min-width="100" />
+                  <el-table-column label="距起点(km)" width="95">
+                    <template #default="{row}">{{ (row.distanceFromStart/1000).toFixed(1) }}</template>
+                  </el-table-column>
+                  <el-table-column label="距下站(km)" width="90">
+                    <template #default="{row}">{{ row.distanceToNext!=null?(row.distanceToNext/1000).toFixed(1):'-' }}</template>
+                  </el-table-column>
+                  <el-table-column label="预计(秒)" width="80">
+                    <template #default="{row}">{{ row.estimatedSeconds!=null?row.estimatedSeconds:'-' }}</template>
+                  </el-table-column>
+                </el-table>
+                <el-empty v-else description="选择左侧线路查看站点" :image-size="60" />
+              </div>
+            </div>
+          </div>
+
+          <el-dialog v-model="lineDialogVisible" :title="lineForm.lineId?'编辑线路':'新增线路'" width="580px" destroy-on-close>
+            <el-form :model="lineForm" label-width="90px" size="default">
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="线路名称"><el-input v-model="lineForm.lineName" /></el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="线路编码"><el-input v-model="lineForm.lineCode" /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="方向">
+                    <el-select v-model="lineForm.direction" style="width:100%">
+                      <el-option :value="1" label="上行" /><el-option :value="2" label="下行" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="状态">
+                    <el-select v-model="lineForm.status" style="width:100%">
+                      <el-option :value="1" label="运营中" /><el-option :value="0" label="停运" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="起始站"><el-input v-model="lineForm.startStation" /></el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="终点站"><el-input v-model="lineForm.endStation" /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="总里程(km)"><el-input-number v-model="lineForm.totalDistance" :min="0" :precision="1" style="width:100%" /></el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="站点数"><el-input-number v-model="lineForm.stationCount" :min="0" style="width:100%" /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="8">
+                  <el-form-item label="首班时间"><el-input-number v-model="lineForm.firstBusTime" :min="0" :max="2359" style="width:100%" /></el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="末班时间"><el-input-number v-model="lineForm.lastBusTime" :min="0" :max="2359" style="width:100%" /></el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="间隔(分)"><el-input-number v-model="lineForm.intervalMinutes" :min="1" style="width:100%" /></el-form-item>
+                </el-col>
+              </el-row>
+            </el-form>
+            <template #footer>
+              <el-button @click="lineDialogVisible=false">取消</el-button>
+              <el-button type="primary" @click="saveLine" :loading="saving">保存</el-button>
+            </template>
+          </el-dialog>
+        </div>
+
+        <!-- ========== 站点管理 ========== -->
+        <div v-if="activeTab==='station'">
+          <div class="card" style="margin-bottom:16px;">
+            <div class="toolbar">
+              <el-button type="primary" @click="openStationDialog(null)">新增站点</el-button>
+              <el-button @click="fetchStations">刷新列表</el-button>
+              <el-divider direction="vertical" />
+              <span style="font-size:13px;color:#606266;">附近查询：</span>
+              <el-input-number v-model="nearbyLng" :precision="6" :step="0.001" placeholder="经度" style="width:140px" :controls="false" />
+              <el-input-number v-model="nearbyLat" :precision="6" :step="0.001" placeholder="纬度" style="width:140px" :controls="false" />
+              <el-input-number v-model="nearbyRadius" :min="100" :max="5000" :step="100" style="width:110px" />
+              <span style="font-size:12px;color:#909399;">米</span>
+              <el-button type="warning" @click="searchNearby">查询附近站点</el-button>
+            </div>
+            <el-table :data="nearbyResults.length?nearbyResults:stations" stripe v-loading="stationLoading"
+              max-height="300" highlight-current-row @current-change="onStationRowSelect">
+              <el-table-column prop="stationId" label="站点ID" width="100" />
+              <el-table-column prop="stationName" label="站点名称" width="140" />
+              <el-table-column prop="stationCode" label="站点编码" width="110" />
+              <el-table-column prop="longitude" label="经度" width="110" />
+              <el-table-column prop="latitude" label="纬度" width="100" />
+              <el-table-column prop="district" label="区域" width="90" />
+              <el-table-column prop="street" label="街道" width="110" />
+              <el-table-column prop="stationType" label="类型" width="80">
+                <template #default="{row}">
+                  <el-tag size="small">{{ row.stationType||'普通' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip />
+              <el-table-column label="操作" width="140" fixed="right">
+                <template #default="{row}">
+                  <el-button link type="primary" @click="openStationDialog(row)">编辑</el-button>
+                  <el-button link type="danger" @click="deleteStation(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-if="nearbyResults.length" style="margin-top:8px;">
+              <el-button size="small" @click="nearbyResults=[]">返回全部列表</el-button>
+            </div>
+          </div>
+          <div class="card">
+            <h4 style="margin-bottom:10px;font-size:14px;color:#303133;">站点分布地图</h4>
+            <div id="station-map"></div>
+          </div>
+
+          <el-dialog v-model="stationDialogVisible" :title="stationForm.stationId?'编辑站点':'新增站点'" width="620px" destroy-on-close @opened="initStationFormMap">
+            <el-form :model="stationForm" label-width="80px" size="default">
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="站点名称"><el-input v-model="stationForm.stationName" /></el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="站点编码"><el-input v-model="stationForm.stationCode" /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="12">
+                  <el-form-item label="经度"><el-input-number v-model="stationForm.longitude" :precision="6" :step="0.001" :controls="false" style="width:100%" /></el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="纬度"><el-input-number v-model="stationForm.latitude" :precision="6" :step="0.001" :controls="false" style="width:100%" /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-row :gutter="16">
+                <el-col :span="8">
+                  <el-form-item label="区域"><el-input v-model="stationForm.district" /></el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="街道"><el-input v-model="stationForm.street" /></el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="类型"><el-input v-model="stationForm.stationType" /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-form-item label="备注"><el-input v-model="stationForm.remark" type="textarea" :rows="2" /></el-form-item>
+              <div style="font-size:12px;color:#909399;margin-bottom:6px;">💡 点击地图设置坐标，拖拽标记可微调位置</div>
+              <div id="station-form-map" class="station-form-map"></div>
+            </el-form>
+            <template #footer>
+              <el-button @click="stationDialogVisible=false">取消</el-button>
+              <el-button type="primary" @click="saveStation" :loading="saving">保存</el-button>
+            </template>
+          </el-dialog>
+        </div>
+
+        <!-- ========== 排班管理 ========== -->
+        <div v-if="activeTab==='schedule'">
+          <div class="card">
+            <div class="toolbar">
+              <span style="font-size:13px;color:#606266;">线路：</span>
+              <el-select v-model="scheduleLineId" placeholder="选择线路" style="width:200px" clearable filterable>
+                <el-option v-for="l in lines" :key="l.lineId" :label="l.lineName" :value="l.lineId" />
+              </el-select>
+              <span style="font-size:13px;color:#606266;margin-left:8px;">日期：</span>
+              <el-date-picker v-model="scheduleDate" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:160px" />
+              <el-button type="primary" @click="fetchSchedules">查询排班</el-button>
+              <el-divider direction="vertical" />
+              <el-upload class="schedule-upload" :action="scheduleUploadUrl" :show-file-list="false"
+                :on-success="onScheduleUploadSuccess" :on-error="onScheduleUploadError" :before-upload="beforeScheduleUpload"
+                accept=".xlsx,.xls" :data="{lineId: scheduleLineId, scheduleDate: scheduleDate}">
+                <el-button type="success" :disabled="!scheduleLineId||!scheduleDate">导入Excel排班</el-button>
+              </el-upload>
+              <el-button type="danger" :disabled="!scheduleLineId||!scheduleDate" @click="deleteSchedule">删除排班</el-button>
+            </div>
+            <el-table :data="schedules" stripe v-loading="scheduleLoading" max-height="calc(100vh - 240px)">
+              <el-table-column prop="id" label="ID" width="80" />
+              <el-table-column prop="lineId" label="线路ID" width="100" />
+              <el-table-column prop="vehicleId" label="车辆ID" width="110" />
+              <el-table-column prop="driverName" label="司机" width="100" />
+              <el-table-column prop="scheduleDate" label="排班日期" width="120" />
+              <el-table-column label="发车时间" width="100">
+                <template #default="{row}">{{ formatTime(row.departureTime) }}</template>
+              </el-table-column>
+              <el-table-column prop="tripIndex" label="班次" width="70" />
+              <el-table-column prop="direction" label="方向" width="70">
+                <template #default="{row}">{{ row.direction===1?'上行':'下行' }}</template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="90">
+                <template #default="{row}">
+                  <el-tag :type="row.status===1?'success':row.status===2?'warning':'info'" size="small">
+                    {{ row.status===1?'已发车':row.status===2?'待发车':'未知' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <!-- ========== 电子站牌 ========== -->
+        <div v-if="activeTab==='stopboard'">
+          <div style="display:flex;gap:16px;">
+            <div style="flex:1;">
+              <div class="card" style="margin-bottom:16px;">
+                <div class="toolbar">
+                  <span style="font-size:13px;color:#606266;">站点ID：</span>
+                  <el-input v-model="stopboardStationId" placeholder="输入站点ID" style="width:200px" clearable />
+                  <el-button type="primary" @click="fetchStopboardInfo">查询</el-button>
+                </div>
+              </div>
+              <div v-if="stopboardStation" class="card station-info-card">
+                <h4 style="margin-bottom:12px;font-size:15px;color:#303133;">🚏 {{ stopboardStation.stationName }}</h4>
+                <el-descriptions :column="2" border size="small">
+                  <el-descriptions-item label="站点ID">{{ stopboardStation.stationId }}</el-descriptions-item>
+                  <el-descriptions-item label="区域">{{ stopboardStation.district||'-' }}</el-descriptions-item>
+                  <el-descriptions-item label="经度">{{ stopboardStation.longitude }}</el-descriptions-item>
+                  <el-descriptions-item label="纬度">{{ stopboardStation.latitude }}</el-descriptions-item>
+                  <el-descriptions-item label="街道" :span="2">{{ stopboardStation.street||'-' }}</el-descriptions-item>
+                </el-descriptions>
+              </div>
+              <div v-if="stopboardLines.length" class="card">
+                <h4 style="margin-bottom:12px;font-size:14px;color:#303133;">途经线路</h4>
+                <el-table :data="stopboardLines" stripe size="small">
+                  <el-table-column prop="lineName" label="线路" width="120" />
+                  <el-table-column prop="direction" label="方向" width="70">
+                    <template #default="{row}">{{ row.direction===1?'上行':'下行' }}</template>
+                  </el-table-column>
+                  <el-table-column label="首班/末班" width="130">
+                    <template #default="{row}">{{ formatTime(row.firstBusTime) }} / {{ formatTime(row.lastBusTime) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="stationName" label="本站名称" min-width="120" />
+                  <el-table-column prop="stationOrder" label="站序" width="60" />
+                </el-table>
+              </div>
+            </div>
+            <div style="width:420px;">
+              <div class="card">
+                <h4 style="margin-bottom:10px;font-size:14px;color:#303133;">站点位置</h4>
+                <div id="stopboard-map"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/vue@3.4.27/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus@2.7.3/dist/index.full.min.js"></script>
+<script src="https://unpkg.com/element-plus@2.7.3/dist/locale/zh-cn.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const BASE_URL = 'http://localhost:8083';
+
+const { createApp, ref, reactive, computed, onMounted, watch, nextTick, toRaw } = Vue;
+
+const app = createApp({
+  setup() {
+    const activeTab = ref('line');
+    const saving = ref(false);
+    const cacheRefreshing = ref(false);
+
+    const tabTitle = computed(() => {
+      const map = { line: '线路管理', station: '站点管理', schedule: '排班管理', stopboard: '电子站牌' };
+      return map[activeTab.value];
+    });
+
+    function formatTime(val) {
+      if (val == null) return '-';
+      const s = String(val);
+      if (s.length <= 2) return s.padStart(2, '0') + ':00';
+      const hh = s.slice(0, s.length - 2).padStart(2, '0');
+      const mm = s.slice(-2).padStart(2, '0');
+      return hh + ':' + mm;
+    }
+
+    async function api(method, path, body) {
+      const opts = { method, headers: {} };
+      if (body && !(body instanceof FormData)) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      } else if (body instanceof FormData) {
+        opts.body = body;
+      }
+      const res = await fetch(BASE_URL + path, opts);
+      const json = await res.json();
+      if (json.code !== 200) throw new Error(json.message || '请求失败');
+      return json.data;
+    }
+
+    // ==================== 线路管理 ====================
+    const lines = ref([]);
+    const lineLoading = ref(false);
+    const selectedLine = ref(null);
+    const lineStations = ref([]);
+    const lineDialogVisible = ref(false);
+    const lineForm = reactive({
+      lineId: '', lineName: '', lineCode: '', direction: 1, startStation: '',
+      endStation: '', totalDistance: 0, stationCount: 0, firstBusTime: 600,
+      lastBusTime: 2200, intervalMinutes: 10, status: 1
+    });
+
+    async function fetchLines() {
+      lineLoading.value = true;
+      try {
+        lines.value = await api('GET', '/api/route/line/list');
+      } catch (e) { ElMessage.error('获取线路列表失败: ' + e.message); }
+      finally { lineLoading.value = false; }
+    }
+
+    async function onLineSelect(row) {
+      selectedLine.value = row;
+      if (!row) { lineStations.value = []; return; }
+      try {
+        lineStations.value = await api('GET', '/api/route/line/' + row.lineId + '/stations');
+      } catch (e) { lineStations.value = []; ElMessage.error('获取站点失败: ' + e.message); }
+    }
+
+    function openLineDialog(row) {
+      if (row) {
+        Object.keys(lineForm).forEach(k => lineForm[k] = row[k] != null ? row[k] : (k === 'direction' ? 1 : k === 'status' ? 1 : ''));
+      } else {
+        Object.assign(lineForm, {
+          lineId: '', lineName: '', lineCode: '', direction: 1, startStation: '',
+          endStation: '', totalDistance: 0, stationCount: 0, firstBusTime: 600,
+          lastBusTime: 2200, intervalMinutes: 10, status: 1
+        });
+      }
+      lineDialogVisible.value = true;
+    }
+
+    async function saveLine() {
+      saving.value = true;
+      try {
+        const body = { ...lineForm };
+        if (body.lineId) {
+          await api('PUT', '/api/route/line', body);
+        } else {
+          delete body.lineId;
+          await api('POST', '/api/route/line', body);
+        }
+        ElMessage.success('保存成功');
+        lineDialogVisible.value = false;
+        await fetchLines();
+      } catch (e) { ElMessage.error('保存失败: ' + e.message); }
+      finally { saving.value = false; }
+    }
+
+    async function deleteLine(row) {
+      try {
+        await ElMessageBox.confirm('确定删除线路 ' + row.lineName + '？', '确认', { type: 'warning' });
+        await api('DELETE', '/api/route/line/' + row.lineId);
+        ElMessage.success('删除成功');
+        await fetchLines();
+        if (selectedLine.value && selectedLine.value.lineId === row.lineId) {
+          selectedLine.value = null;
+          lineStations.value = [];
+        }
+      } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败: ' + e.message); }
+    }
+
+    async function refreshLineCache() {
+      cacheRefreshing.value = true;
+      try {
+        await api('POST', '/api/route/line/cache/refresh');
+        ElMessage.success('缓存已刷新');
+      } catch (e) { ElMessage.error('刷新缓存失败: ' + e.message); }
+      finally { cacheRefreshing.value = false; }
+    }
+
+    // ==================== 站点管理 ====================
+    const stations = ref([]);
+    const stationLoading = ref(false);
+    const stationDialogVisible = ref(false);
+    const stationForm = reactive({
+      stationId: '', stationName: '', stationCode: '', longitude: 116.4,
+      latitude: 39.9, district: '', street: '', stationType: '', remark: ''
+    });
+    const nearbyLng = ref(116.4);
+    const nearbyLat = ref(39.9);
+    const nearbyRadius = ref(500);
+    const nearbyResults = ref([]);
+
+    let stationMap = null;
+    let stationMarkers = [];
+    let stationFormMap = null;
+    let stationFormMarker = null;
+
+    async function fetchStations() {
+      stationLoading.value = true;
+      try {
+        stations.value = await api('GET', '/api/route/station/list');
+        await nextTick();
+        updateStationMap();
+      } catch (e) { ElMessage.error('获取站点列表失败: ' + e.message); }
+      finally { stationLoading.value = false; }
+    }
+
+    function initStationMap() {
+      if (stationMap) { stationMap.remove(); stationMap = null; }
+      stationMap = L.map('station-map').setView([39.9, 116.4], 11);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(stationMap);
+      updateStationMap();
+    }
+
+    function updateStationMap() {
+      if (!stationMap) return;
+      stationMarkers.forEach(m => stationMap.removeLayer(m));
+      stationMarkers = [];
+      const data = nearbyResults.value.length ? nearbyResults.value : stations.value;
+      data.forEach(s => {
+        if (s.latitude && s.longitude) {
+          const marker = L.marker([s.latitude, s.longitude]).addTo(stationMap);
+          marker.bindPopup('<b>' + s.stationName + '</b><br/>ID: ' + s.stationId + '<br/>' + (s.district || '') + ' ' + (s.street || ''));
+          marker.on('click', () => {
+            nearbyLng.value = s.longitude;
+            nearbyLat.value = s.latitude;
+          });
+          stationMarkers.push(marker);
+        }
+      });
+      if (data.length && data.some(s => s.latitude && s.longitude)) {
+        const bounds = L.latLngBounds(data.filter(s => s.latitude && s.longitude).map(s => [s.latitude, s.longitude]));
+        stationMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+      }
+    }
+
+    function onStationRowSelect(row) {
+      if (row && row.latitude && row.longitude && stationMap) {
+        stationMap.setView([row.latitude, row.longitude], 15);
+      }
+    }
+
+    function openStationDialog(row) {
+      if (row) {
+        Object.keys(stationForm).forEach(k => stationForm[k] = row[k] != null ? row[k] : '');
+      } else {
+        Object.assign(stationForm, {
+          stationId: '', stationName: '', stationCode: '', longitude: 116.4,
+          latitude: 39.9, district: '', street: '', stationType: '', remark: ''
+        });
+      }
+      stationDialogVisible.value = true;
+    }
+
+    function initStationFormMap() {
+      if (stationFormMap) { stationFormMap.remove(); stationFormMap = null; }
+      nextTick(() => {
+        const el = document.getElementById('station-form-map');
+        if (!el) return;
+        stationFormMap = L.map('station-form-map').setView([stationForm.latitude || 39.9, stationForm.longitude || 116.4], 14);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(stationFormMap);
+        stationFormMarker = L.marker([stationForm.latitude || 39.9, stationForm.longitude || 116.4], { draggable: true }).addTo(stationFormMap);
+        stationFormMarker.on('dragend', function () {
+          const pos = stationFormMarker.getLatLng();
+          stationForm.longitude = Math.round(pos.lng * 1000000) / 1000000;
+          stationForm.latitude = Math.round(pos.lat * 1000000) / 1000000;
+        });
+        stationFormMap.on('click', function (e) {
+          stationForm.longitude = Math.round(e.latlng.lng * 1000000) / 1000000;
+          stationForm.latitude = Math.round(e.latlng.lat * 1000000) / 1000000;
+          stationFormMarker.setLatLng(e.latlng);
+        });
+      });
+    }
+
+    async function saveStation() {
+      saving.value = true;
+      try {
+        const body = { ...stationForm };
+        if (body.stationId) {
+          await api('PUT', '/api/route/station', body);
+        } else {
+          delete body.stationId;
+          await api('POST', '/api/route/station', body);
+        }
+        ElMessage.success('保存成功');
+        stationDialogVisible.value = false;
+        await fetchStations();
+      } catch (e) { ElMessage.error('保存失败: ' + e.message); }
+      finally { saving.value = false; }
+    }
+
+    async function deleteStation(row) {
+      try {
+        await ElMessageBox.confirm('确定删除站点 ' + row.stationName + '？', '确认', { type: 'warning' });
+        await api('DELETE', '/api/route/station/' + row.stationId);
+        ElMessage.success('删除成功');
+        await fetchStations();
+      } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败: ' + e.message); }
+    }
+
+    async function searchNearby() {
+      if (!nearbyLng.value || !nearbyLat.value) {
+        ElMessage.warning('请输入经纬度');
+        return;
+      }
+      try {
+        nearbyResults.value = await api('GET', '/api/route/station/nearby?longitude=' + nearbyLng.value + '&latitude=' + nearbyLat.value + '&radius=' + nearbyRadius.value + '&limit=20');
+        updateStationMap();
+        ElMessage.success('找到 ' + nearbyResults.value.length + ' 个附近站点');
+      } catch (e) { ElMessage.error('查询失败: ' + e.message); }
+    }
+
+    // ==================== 排班管理 ====================
+    const scheduleLineId = ref('');
+    const scheduleDate = ref(new Date().toISOString().slice(0, 10));
+    const schedules = ref([]);
+    const scheduleLoading = ref(false);
+    const scheduleUploadUrl = computed(() => BASE_URL + '/api/route/schedule/import');
+
+    async function fetchSchedules() {
+      if (!scheduleLineId.value || !scheduleDate.value) {
+        ElMessage.warning('请选择线路和日期');
+        return;
+      }
+      scheduleLoading.value = true;
+      try {
+        schedules.value = await api('GET', '/api/route/schedule/list?lineId=' + scheduleLineId.value + '&date=' + scheduleDate.value);
+      } catch (e) { ElMessage.error('获取排班失败: ' + e.message); }
+      finally { scheduleLoading.value = false; }
+    }
+
+    async function deleteSchedule() {
+      if (!scheduleLineId.value || !scheduleDate.value) {
+        ElMessage.warning('请选择线路和日期');
+        return;
+      }
+      try {
+        await ElMessageBox.confirm('确定删除该日排班数据？', '确认', { type: 'warning' });
+        await api('DELETE', '/api/route/schedule?lineId=' + scheduleLineId.value + '&date=' + scheduleDate.value);
+        ElMessage.success('删除成功');
+        schedules.value = [];
+      } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败: ' + e.message); }
+    }
+
+    function beforeScheduleUpload(file) {
+      if (!scheduleLineId.value || !scheduleDate.value) {
+        ElMessage.warning('请先选择线路和日期');
+        return false;
+      }
+      return true;
+    }
+
+    function onScheduleUploadSuccess(response) {
+      if (response.code === 200) {
+        ElMessage.success('导入成功');
+        fetchSchedules();
+      } else {
+        ElMessage.error('导入失败: ' + (response.message || '未知错误'));
+      }
+    }
+
+    function onScheduleUploadError() {
+      ElMessage.error('导入失败，请检查文件格式');
+    }
+
+    // ==================== 电子站牌 ====================
+    const stopboardStationId = ref('');
+    const stopboardStation = ref(null);
+    const stopboardLines = ref([]);
+    let stopboardMap = null;
+    let stopboardMarker = null;
+
+    async function fetchStopboardInfo() {
+      if (!stopboardStationId.value) {
+        ElMessage.warning('请输入站点ID');
+        return;
+      }
+      try {
+        const [info, linesData] = await Promise.all([
+          api('GET', '/api/stopboard/' + stopboardStationId.value + '/info'),
+          api('GET', '/api/stopboard/' + stopboardStationId.value + '/lines')
+        ]);
+        stopboardStation.value = info;
+        stopboardLines.value = linesData;
+        await nextTick();
+        updateStopboardMap();
+      } catch (e) {
+        stopboardStation.value = null;
+        stopboardLines.value = [];
+        ElMessage.error('查询失败: ' + e.message);
+      }
+    }
+
+    function initStopboardMap() {
+      if (stopboardMap) { stopboardMap.remove(); stopboardMap = null; }
+      const el = document.getElementById('stopboard-map');
+      if (!el) return;
+      stopboardMap = L.map('stopboard-map').setView([39.9, 116.4], 12);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(stopboardMap);
+    }
+
+    function updateStopboardMap() {
+      if (!stopboardMap) return;
+      if (stopboardMarker) { stopboardMap.removeLayer(stopboardMarker); stopboardMarker = null; }
+      if (stopboardStation.value && stopboardStation.value.latitude && stopboardStation.value.longitude) {
+        const s = stopboardStation.value;
+        stopboardMarker = L.marker([s.latitude, s.longitude]).addTo(stopboardMap);
+        stopboardMarker.bindPopup('<b>' + s.stationName + '</b>').openPopup();
+        stopboardMap.setView([s.latitude, s.longitude], 15);
+      }
+    }
+
+    // ==================== Tab切换时初始化地图 ====================
+    watch(activeTab, async (tab) => {
+      await nextTick();
+      if (tab === 'station') {
+        setTimeout(() => initStationMap(), 100);
+        if (!stations.value.length) fetchStations();
+      }
+      if (tab === 'stopboard') {
+        setTimeout(() => initStopboardMap(), 100);
+      }
+      if (tab === 'schedule') {
+        if (!lines.value.length) fetchLines();
+      }
+    });
+
+    onMounted(() => {
+      fetchLines();
+    });
+
+    return {
+      activeTab, tabTitle, formatTime, saving, cacheRefreshing,
+      lines, lineLoading, selectedLine, lineStations, lineDialogVisible, lineForm,
+      fetchLines, onLineSelect, openLineDialog, saveLine, deleteLine, refreshLineCache,
+      stations, stationLoading, stationDialogVisible, stationForm,
+      nearbyLng, nearbyLat, nearbyRadius, nearbyResults,
+      fetchStations, onStationRowSelect, openStationDialog, initStationFormMap, saveStation, deleteStation, searchNearby,
+      scheduleLineId, scheduleDate, schedules, scheduleLoading, scheduleUploadUrl,
+      fetchSchedules, deleteSchedule, beforeScheduleUpload, onScheduleUploadSuccess, onScheduleUploadError,
+      stopboardStationId, stopboardStation, stopboardLines,
+      fetchStopboardInfo
+    };
+  }
+});
+
+app.use(ElementPlus, { locale: ElementPlusLocaleZhCn });
+app.mount('#app');
+</script>
+</body>
+</html>
