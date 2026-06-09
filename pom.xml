@@ -16,6 +16,8 @@
         <module>traffic-model</module>
         <module>gateway</module>
         <module>flink-processor</module>
+        <module>standalone-processor</module>
+        <module>simulator</module>
         <module>web-api</module>
     </modules>
 
@@ -58,6 +60,11 @@
             <dependency>
                 <groupId>com.bus.predictor</groupId>
                 <artifactId>traffic-model</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.bus.predictor</groupId>
+                <artifactId>standalone-processor</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

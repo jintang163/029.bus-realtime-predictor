@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>公交实时预测系统 - 管理仪表盘</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-primary:#0a0e1a;
+  --bg-secondary:#111827;
+  --bg-card:#1a2236;
+  --bg-card-hover:#1e2a42;
+  --border:#2a3654;
+  --text-primary:#e8ecf4;
+  --text-secondary:#8b9dc3;
+  --text-muted:#5a6e8f;
+  --accent-blue:#3b82f6;
+  --accent-cyan:#06b6d4;
+  --accent-blue-glow:rgba(59,130,246,.25);
+  --accent-cyan-glow:rgba(6,182,212,.2);
+  --green:#10b981;
+  --red:#ef4444;
+  --orange:#f59e0b;
+  --yellow:#eab308;
+  --radius:10px;
+  --shadow:0 4px 24px rgba(0,0,0,.4);
+}
+html,body{height:100%;font-family:'Segoe UI','Microsoft YaHei','PingFang SC',sans-serif;background:var(--bg-primary);color:var(--text-primary);overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%}
+
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;height:56px;min-height:56px;
+  background:var(--bg-secondary);border-bottom:1px solid var(--border);
+}
+header .logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;letter-spacing:.5px}
+header .logo svg{width:28px;height:28px}
+header .header-right{display:flex;align-items:center;gap:16px;font-size:13px;color:var(--text-secondary)}
+.ws-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.ws-dot.connected{background:var(--green);box-shadow:0 0 6px var(--green)}
+.ws-dot.disconnected{background:var(--red);box-shadow:0 0 6px var(--red)}
+
+nav{
+  display:flex;gap:0;background:var(--bg-secondary);border-bottom:1px solid var(--border);
+  padding:0 24px;
+}
+nav button{
+  background:none;border:none;color:var(--text-secondary);font-size:14px;font-weight:500;
+  padding:12px 20px;cursor:pointer;position:relative;transition:color .2s;
+}
+nav button:hover{color:var(--text-primary)}
+nav button.active{color:var(--accent-cyan)}
+nav button.active::after{
+  content:'';position:absolute;bottom:0;left:12px;right:12px;height:2px;
+  background:var(--accent-cyan);border-radius:2px;
+}
+
+main{flex:1;overflow-y:auto;padding:20px 24px}
+
+.page{display:none}
+.page.active{display:block}
+
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px}
+.stat-card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;
+}
+.stat-card:hover{border-color:var(--accent-blue);transform:translateY(-2px)}
+.stat-card .stat-label{font-size:13px;color:var(--text-secondary);margin-bottom:8px}
+.stat-card .stat-value{font-size:32px;font-weight:700}
+.stat-card .stat-icon{
+  position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.stat-card .stat-icon.blue{background:rgba(59,130,246,.15);color:var(--accent-blue)}
+.stat-card .stat-icon.cyan{background:rgba(6,182,212,.15);color:var(--accent-cyan)}
+.stat-card .stat-icon.green{background:rgba(16,185,129,.15);color:var(--green)}
+.stat-card .stat-icon.orange{background:rgba(245,158,11,.15);color:var(--orange)}
+
+.card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:var(--shadow);margin-bottom:20px;
+}
+.card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--border);
+}
+.card-header h3{font-size:15px;font-weight:600}
+.card-body{padding:20px}
+
+.map-container{position:relative;width:100%;height:420px;border-radius:8px;overflow:hidden;background:#0d1220}
+.map-container canvas{width:100%;height:100%}
+.map-legend{
+  position:absolute;bottom:12px;right:12px;background:rgba(17,24,39,.85);
+  border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:12px;
+  display:flex;gap:14px;
+}
+.map-legend span{display:flex;align-items:center;gap:5px}
+.map-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{
+  text-align:left;padding:10px 12px;font-weight:600;color:var(--text-secondary);
+  border-bottom:1px solid var(--border);font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+  position:sticky;top:0;background:var(--bg-card);z-index:1;
+}
+tbody td{padding:10px 12px;border-bottom:1px solid rgba(42,54,84,.4);color:var(--text-primary)}
+tbody tr:hover{background:var(--bg-card-hover)}
+.table-wrap{max-height:440px;overflow-y:auto}
+
+.badge{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;
+  font-size:12px;font-weight:500;
+}
+.badge-green{background:rgba(16,185,129,.15);color:var(--green)}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+.badge-orange{background:rgba(245,158,11,.15);color:var(--orange)}
+.badge-yellow{background:rgba(234,179,8,.15);color:var(--yellow)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--accent-blue)}
+
+.form-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:12px;color:var(--text-secondary);font-weight:500}
+.form-group input,.form-group select{
+  background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;
+  color:var(--text-primary);padding:8px 12px;font-size:13px;outline:none;
+  transition:border-color .2s;min-width:180px;
+}
+.form-group input:focus,.form-group select:focus{border-color:var(--accent-cyan)}
+
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border:none;border-radius:6px;
+  font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;
+}
+.btn-primary{background:var(--accent-blue);color:#fff}
+.btn-primary:hover{background:#2563eb;box-shadow:0 0 12px var(--accent-blue-glow)}
+.btn-secondary{background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--accent-cyan)}
+
+.traffic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.traffic-card{
+  background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;
+  padding:16px;transition:border-color .2s;
+}
+.traffic-card:hover{border-color:var(--accent-cyan)}
+.traffic-card .seg-id{font-size:12px;color:var(--text-muted);margin-bottom:6px}
+.traffic-card .seg-speed{font-size:24px;font-weight:700;margin-bottom:4px}
+.traffic-card .seg-speed span{font-size:13px;font-weight:400;color:var(--text-secondary);margin-left:4px}
+.traffic-bar{height:4px;background:var(--bg-primary);border-radius:2px;margin-top:10px;overflow:hidden}
+.traffic-bar-fill{height:100%;border-radius:2px;transition:width .5s}
+
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
+.empty-state svg{width:48px;height:48px;margin-bottom:12px;opacity:.4}
+
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+.fade-in{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+@media(max-width:768px){
+  header{padding:0 12px}
+  nav{padding:0 8px;overflow-x:auto}
+  nav button{padding:10px 12px;font-size:13px;white-space:nowrap}
+  main{padding:12px}
+  .stats-row{grid-template-columns:1fr 1fr}
+  .form-row{flex-direction:column}
+  .form-group input,.form-group select{min-width:auto;width:100%}
+  .map-container{height:300px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      公交实时预测系统
+    </div>
+    <div class="header-right">
+      <span><span class="ws-dot disconnected" id="wsDot"></span><span id="wsStatus">未连接</span></span>
+      <span id="currentTime"></span>
+    </div>
+  </header>
+
+  <nav id="tabNav">
+    <button class="active" data-tab="dashboard">📊 系统概览</button>
+    <button data-tab="vehicles">🚌 车辆监控</button>
+    <button data-tab="prediction">🎯 到站预测</button>
+    <button data-tab="traffic">🛣️ 交通信息</button>
+  </nav>
+
+  <main>
+    <div class="page active" id="page-dashboard">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">在线车辆</div>
+          <div class="stat-value" style="color:var(--green)" id="statOnline">--</div>
+          <div class="stat-icon green">🚌</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">离线车辆</div>
+          <div class="stat-value" style="color:var(--red)" id="statOffline">--</div>
+          <div class="stat-icon blue">📡</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">停运车辆</div>
+          <div class="stat-value" style="color:var(--orange)" id="statStopped">--</div>
+          <div class="stat-icon orange">⚠️</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">数据更新频率</div>
+          <div class="stat-value" style="color:var(--accent-cyan)" id="statRefresh">2s</div>
+          <div class="stat-icon cyan">⏱️</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>实时车辆分布</h3>
+          <span style="font-size:12px;color:var(--text-muted)" id="mapVehicleCount">0 辆车</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="map-container">
+            <canvas id="mapCanvas"></canvas>
+            <div class="map-legend">
+              <span><i style="background:var(--green)"></i> 在线</span>
+              <span><i style="background:var(--red)"></i> 离线</span>
+              <span><i style="background:var(--orange)"></i> 停运</span>
+              <span><i style="background:var(--yellow)"></i> GPS丢失</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-vehicles">
+      <div class="card">
+        <div class="card-header">
+          <h3>在线车辆列表</h3>
+          <span style="font-size:12px;color:var(--text-muted)" id="vehicleCount">0 辆</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>车辆ID</th><th>经度</th><th>纬度</th><th>速度(km/h)</th><th>方向</th><th>状态</th><th>GPS时间</th>
+                </tr>
+              </thead>
+              <tbody id="vehicleTableBody">
+                <tr><td colspan="7" class="empty-state">等待数据...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-prediction">
+      <div class="card">
+        <div class="card-header"><h3>到站预测查询</h3></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>车辆ID</label>
+              <input type="text" id="predVehicleId" placeholder="输入车辆ID">
+            </div>
+            <div class="form-group">
+              <label>线路ID</label>
+              <input type="text" id="predRouteId" placeholder="如 R001" value="R001">
+            </div>
+            <button class="btn btn-primary" onclick="fetchPrediction()">🔍 查询预测</button>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="predResultCard" style="display:none">
+        <div class="card-header">
+          <h3>预测结果</h3>
+          <span style="font-size:12px;color:var(--text-muted)" id="predInfo"></span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>站点名称</th><th>距离(m)</th><th>预计到达</th><th>拥堵系数</th><th>当前速度</th><th>预测时间</th>
+                </tr>
+              </thead>
+              <tbody id="predTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-traffic">
+      <div class="form-row" style="margin-bottom:16px">
+        <div class="form-group">
+          <label>路段ID</label>
+          <input type="text" id="trafficSegId" placeholder="输入路段ID">
+        </div>
+        <button class="btn btn-primary" onclick="fetchTrafficSegment()">🔍 查询路段</button>
+        <button class="btn btn-secondary" onclick="fetchTrafficBatch()">📋 批量加载示例</button>
+      </div>
+      <div class="traffic-grid" id="trafficGrid">
+        <div class="empty-state" style="grid-column:1/-1">
+          <p>输入路段ID查询，或点击批量加载示例数据</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+var API = 'http://localhost:8080';
+var WS_URL = 'ws://localhost:8080/ws/vehicle';
+var REFRESH_INTERVAL = 2000;
+var vehicles = [];
+var ws = null;
+var wsReconnectTimer = null;
+
+var STATUS_MAP = {
+  0: { text: '离线', cls: 'badge-red' },
+  1: { text: '在线', cls: 'badge-green' },
+  2: { text: '停运', cls: 'badge-orange' },
+  3: { text: 'GPS信号丢失', cls: 'badge-yellow' }
+};
+
+function statusBadge(code) {
+  var s = STATUS_MAP[code] || { text: '未知', cls: 'badge-blue' };
+  return '<span class="badge ' + s.cls + '">' + s.text + '</span>';
+}
+
+function formatSeconds(sec) {
+  if (sec == null || isNaN(sec)) return '--';
+  var m = Math.floor(sec / 60);
+  var s = Math.floor(sec % 60);
+  return m + '分' + s + '秒';
+}
+
+function formatTime(ts) {
+  if (!ts) return '--';
+  var d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  var hh = String(d.getHours()).padStart(2, '0');
+  var mm = String(d.getMinutes()).padStart(2, '0');
+  var ss = String(d.getSeconds()).padStart(2, '0');
+  return hh + ':' + mm + ':' + ss;
+}
+
+function formatDateTime(ts) {
+  if (!ts) return '--';
+  var d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  var mo = String(d.getMonth() + 1).padStart(2, '0');
+  var dd = String(d.getDate()).padStart(2, '0');
+  var hh = String(d.getHours()).padStart(2, '0');
+  var mm = String(d.getMinutes()).padStart(2, '0');
+  var ss = String(d.getSeconds()).padStart(2, '0');
+  return mo + '-' + dd + ' ' + hh + ':' + mm + ':' + ss;
+}
+
+function apiGet(path) {
+  return fetch(API + path).then(function(r) { return r.json(); }).then(function(json) {
+    if (json.code === 200) return json.data;
+    throw new Error(json.message || '请求失败');
+  });
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('nav button').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tabName);
+  });
+  document.querySelectorAll('.page').forEach(function(p) {
+    p.classList.toggle('active', p.id === 'page-' + tabName);
+  });
+  if (tabName === 'dashboard') drawMap();
+}
+
+document.getElementById('tabNav').addEventListener('click', function(e) {
+  if (e.target.tagName === 'BUTTON') {
+    switchTab(e.target.getAttribute('data-tab'));
+  }
+});
+
+function updateClock() {
+  var now = new Date();
+  var str = now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0') + ' ' +
+    String(now.getHours()).padStart(2, '0') + ':' +
+    String(now.getMinutes()).padStart(2, '0') + ':' +
+    String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('currentTime').textContent = str;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+function connectWS() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) {
+    scheduleReconnect();
+    return;
+  }
+  ws.onopen = function() {
+    document.getElementById('wsDot').className = 'ws-dot connected';
+    document.getElementById('wsStatus').textContent = '已连接';
+  };
+  ws.onclose = function() {
+    document.getElementById('wsDot').className = 'ws-dot disconnected';
+    document.getElementById('wsStatus').textContent = '已断开';
+    scheduleReconnect();
+  };
+  ws.onerror = function() {
+    document.getElementById('wsDot').className = 'ws-dot disconnected';
+    document.getElementById('wsStatus').textContent = '连接错误';
+  };
+  ws.onmessage = function(evt) {
+    try {
+      var msg = JSON.parse(evt.data);
+      if (msg.code === 200 && msg.data) {
+        if (Array.isArray(msg.data)) {
+          vehicles = msg.data;
+        } else {
+          var idx = vehicles.findIndex(function(v) { return v.vehicleId === msg.data.vehicleId; });
+          if (idx >= 0) vehicles[idx] = msg.data;
+          else vehicles.push(msg.data);
+        }
+        refreshUI();
+      }
+    } catch (e) {}
+  };
+}
+
+function scheduleReconnect() {
+  if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+  wsReconnectTimer = setTimeout(function() {
+    connectWS();
+  }, 3000);
+}
+
+function fetchOnlineVehicles() {
+  apiGet('/api/vehicle/online').then(function(data) {
+    if (Array.isArray(data)) {
+      vehicles = data;
+      refreshUI();
+    }
+  }).catch(function() {});
+}
+
+function fetchOnlineCount() {
+  apiGet('/api/vehicle/online/count').then(function(data) {
+    if (data) document.getElementById('statOnline').textContent = data.onlineCount != null ? data.onlineCount : '--';
+  }).catch(function() {});
+}
+
+function refreshUI() {
+  updateStats();
+  updateVehicleTable();
+  drawMap();
+}
+
+function updateStats() {
+  var online = 0, offline = 0, stopped = 0;
+  vehicles.forEach(function(v) {
+    if (v.status === 1) online++;
+    else if (v.status === 0) offline++;
+    else if (v.status === 2) stopped++;
+  });
+  document.getElementById('statOnline').textContent = online;
+  document.getElementById('statOffline').textContent = offline;
+  document.getElementById('statStopped').textContent = stopped;
+  document.getElementById('mapVehicleCount').textContent = vehicles.length + ' 辆车';
+  document.getElementById('vehicleCount').textContent = vehicles.length + ' 辆';
+}
+
+function updateVehicleTable() {
+  var tbody = document.getElementById('vehicleTableBody');
+  if (!vehicles.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无车辆数据</td></tr>';
+    return;
+  }
+  var sorted = vehicles.slice().sort(function(a, b) {
+    if (a.status === 1 && b.status !== 1) return -1;
+    if (a.status !== 1 && b.status === 1) return 1;
+    return 0;
+  });
+  var html = '';
+  sorted.forEach(function(v) {
+    html += '<tr class="fade-in">' +
+      '<td style="font-weight:600;color:var(--accent-cyan)">' + esc(v.vehicleId) + '</td>' +
+      '<td>' + (v.longitude != null ? v.longitude.toFixed(6) : '--') + '</td>' +
+      '<td>' + (v.latitude != null ? v.latitude.toFixed(6) : '--') + '</td>' +
+      '<td>' + (v.speed != null ? v.speed : '--') + '</td>' +
+      '<td>' + (v.direction != null ? v.direction + '°' : '--') + '</td>' +
+      '<td>' + statusBadge(v.status) + '</td>' +
+      '<td style="font-size:12px;color:var(--text-secondary)">' + formatDateTime(v.gpsTime) + '</td>' +
+      '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+var mapCanvas, mapCtx;
+var mapAnimFrame;
+var mapHover = -1;
+
+function initMap() {
+  mapCanvas = document.getElementById('mapCanvas');
+  mapCtx = mapCanvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  mapCanvas.addEventListener('mousemove', function(e) {
+    var rect = mapCanvas.getBoundingClientRect();
+    var mx = (e.clientX - rect.left) * (mapCanvas.width / rect.width);
+    var my = (e.clientY - rect.top) * (mapCanvas.height / rect.height);
+    mapHover = -1;
+    for (var i = 0; i < vehicles.length; i++) {
+      var pos = projectVehicle(vehicles[i]);
+      if (pos && Math.hypot(mx - pos.x, my - pos.y) < 12) {
+        mapHover = i;
+        break;
+      }
+    }
+    mapCanvas.style.cursor = mapHover >= 0 ? 'pointer' : 'default';
+  });
+  drawMap();
+}
+
+function resizeCanvas() {
+  if (!mapCanvas) return;
+  var container = mapCanvas.parentElement;
+  var dpr = window.devicePixelRatio || 1;
+  mapCanvas.width = container.clientWidth * dpr;
+  mapCanvas.height = container.clientHeight * dpr;
+  mapCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawMap();
+}
+
+function projectVehicle(v) {
+  if (v.longitude == null || v.latitude == null) return null;
+  if (!vehicles.length) return null;
+  var lngs = vehicles.filter(function(x) { return x.longitude != null; }).map(function(x) { return x.longitude; });
+  var lats = vehicles.filter(function(x) { return x.latitude != null; }).map(function(x) { return x.latitude; });
+  if (!lngs.length) return null;
+  var minLng = Math.min.apply(null, lngs), maxLng = Math.max.apply(null, lngs);
+  var minLat = Math.min.apply(null, lats), maxLat = Math.max.apply(null, lats);
+  var pad = 0.01;
+  if (maxLng - minLng < pad * 2) { minLng -= pad; maxLng += pad; }
+  if (maxLat - minLat < pad * 2) { minLat -= pad; maxLat += pad; }
+  var w = mapCanvas.width / (window.devicePixelRatio || 1);
+  var h = mapCanvas.height / (window.devicePixelRatio || 1);
+  var margin = 40;
+  var x = margin + (v.longitude - minLng) / (maxLng - minLng) * (w - margin * 2);
+  var y = margin + (1 - (v.latitude - minLat) / (maxLat - minLat)) * (h - margin * 2);
+  return { x: x, y: y };
+}
+
+var STATUS_COLORS = { 0: '#ef4444', 1: '#10b981', 2: '#f59e0b', 3: '#eab308' };
+var gridPhase = 0;
+
+function drawMap() {
+  if (!mapCtx || !mapCanvas) return;
+  var w = mapCanvas.width / (window.devicePixelRatio || 1);
+  var h = mapCanvas.height / (window.devicePixelRatio || 1);
+  var ctx = mapCtx;
+
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.fillStyle = '#0d1220';
+  ctx.fillRect(0, 0, w, h);
+
+  gridPhase = (gridPhase + 0.002) % 1;
+  ctx.strokeStyle = 'rgba(42,54,84,0.3)';
+  ctx.lineWidth = 0.5;
+  var gridSize = 40;
+  for (var gx = 0; gx < w; gx += gridSize) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+  }
+  for (var gy = 0; gy < h; gy += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+  }
+
+  if (!vehicles.length) {
+    ctx.fillStyle = 'rgba(91,110,143,0.5)';
+    ctx.font = '14px "Segoe UI","Microsoft YaHei",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('等待车辆数据...', w / 2, h / 2);
+    return;
+  }
+
+  vehicles.forEach(function(v, i) {
+    var pos = projectVehicle(v);
+    if (!pos) return;
+    var color = STATUS_COLORS[v.status] || '#3b82f6';
+    var isHover = i === mapHover;
+
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, isHover ? 10 : 6, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, isHover ? 16 : 10, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    if (v.speed != null && v.speed > 0) {
+      var dir = (v.direction || 0) * Math.PI / 180;
+      var len = 14;
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      ctx.lineTo(pos.x + Math.sin(dir) * len, pos.y - Math.cos(dir) * len);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = isHover ? '#fff' : 'rgba(232,236,244,0.85)';
+    ctx.font = (isHover ? 'bold 12px' : '10px') + ' "Segoe UI","Microsoft YaHei",sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(v.vehicleId, pos.x, pos.y - (isHover ? 18 : 13));
+  });
+
+  if (mapHover >= 0 && vehicles[mapHover]) {
+    var hv = vehicles[mapHover];
+    var hp = projectVehicle(hv);
+    if (hp) {
+      var bx = Math.min(hp.x + 20, w - 160);
+      var by = Math.max(hp.y - 50, 10);
+      ctx.fillStyle = 'rgba(17,24,39,0.92)';
+      ctx.strokeStyle = 'rgba(59,130,246,0.5)';
+      ctx.lineWidth = 1;
+      roundRect(ctx, bx, by, 150, 62, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#e8ecf4';
+      ctx.font = '11px "Segoe UI","Microsoft YaHei",sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('ID: ' + hv.vehicleId, bx + 8, by + 16);
+      ctx.fillText('速度: ' + (hv.speed != null ? hv.speed + ' km/h' : '--'), bx + 8, by + 32);
+      ctx.fillText('方向: ' + (hv.direction != null ? hv.direction + '°' : '--'), bx + 8, by + 48);
+    }
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function fetchPrediction() {
+  var vid = document.getElementById('predVehicleId').value.trim();
+  var rid = document.getElementById('predRouteId').value.trim();
+  if (!vid) { alert('请输入车辆ID'); return; }
+  var url = '/api/vehicle/prediction/' + encodeURIComponent(vid);
+  if (rid) url += '?routeId=' + encodeURIComponent(rid);
+
+  apiGet(url).then(function(data) {
+    var card = document.getElementById('predResultCard');
+    card.style.display = 'block';
+    document.getElementById('predInfo').textContent = '车辆: ' + vid + (rid ? ' | 线路: ' + rid : '');
+
+    var tbody = document.getElementById('predTableBody');
+    if (!data || !data.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无预测数据</td></tr>';
+      return;
+    }
+    var html = '';
+    data.forEach(function(row) {
+      var congCls = row.congestionFactor > 1.5 ? 'badge-red' : row.congestionFactor > 1.0 ? 'badge-orange' : 'badge-green';
+      html += '<tr class="fade-in">' +
+        '<td style="font-weight:600">' + esc(row.stationName || row.stationId || '--') + '</td>' +
+        '<td>' + (row.distanceToStation != null ? row.distanceToStation.toFixed(1) : '--') + '</td>' +
+        '<td style="color:var(--accent-cyan);font-weight:600">' + formatSeconds(row.estimatedSeconds) + '</td>' +
+        '<td><span class="badge ' + congCls + '">' + (row.congestionFactor != null ? row.congestionFactor.toFixed(2) : '--') + '</span></td>' +
+        '<td>' + (row.currentSpeed != null ? row.currentSpeed + ' km/h' : '--') + '</td>' +
+        '<td style="font-size:12px;color:var(--text-secondary)">' + formatDateTime(row.predictTime) + '</td>' +
+        '</tr>';
+    });
+    tbody.innerHTML = html;
+  }).catch(function(err) {
+    alert('查询失败: ' + err.message);
+  });
+}
+
+function fetchTrafficSegment() {
+  var segId = document.getElementById('trafficSegId').value.trim();
+  if (!segId) { alert('请输入路段ID'); return; }
+  apiGet('/api/traffic/segment/' + encodeURIComponent(segId) + '/speed').then(function(data) {
+    renderTrafficCards(data ? [data] : []);
+  }).catch(function(err) {
+    alert('查询失败: ' + err.message);
+  });
+}
+
+function fetchTrafficBatch() {
+  var ids = ['S001', 'S002', 'S003', 'S004', 'S005', 'S006', 'S007', 'S008'];
+  var promises = ids.map(function(id) {
+    return apiGet('/api/traffic/segment/' + id + '/speed').catch(function() { return null; });
+  });
+  Promise.all(promises).then(function(results) {
+    var valid = results.filter(Boolean);
+    renderTrafficCards(valid);
+  });
+}
+
+var trafficData = [];
+function renderTrafficCards(data) {
+  trafficData = data;
+  var grid = document.getElementById('trafficGrid');
+  if (!data.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><p>暂无交通数据</p></div>';
+    return;
+  }
+  var html = '';
+  data.forEach(function(seg) {
+    var speed = seg.currentSpeed != null ? seg.currentSpeed : 0;
+    var cong = seg.congestionFactor != null ? seg.congestionFactor : 0;
+    var maxSpeed = 80;
+    var pct = Math.min(100, Math.max(0, (speed / maxSpeed) * 100));
+    var barColor = pct > 60 ? '#10b981' : pct > 30 ? '#f59e0b' : '#ef4444';
+    var congCls = cong > 1.5 ? 'badge-red' : cong > 1.0 ? 'badge-orange' : 'badge-green';
+
+    html += '<div class="traffic-card fade-in">' +
+      '<div class="seg-id">路段 ' + esc(seg.segmentId || '--') + '</div>' +
+      '<div class="seg-speed">' + speed + '<span>km/h</span></div>' +
+      '<div>拥堵系数: <span class="badge ' + congCls + '">' + cong.toFixed(2) + '</span></div>' +
+      '<div class="traffic-bar"><div class="traffic-bar-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div>' +
+      '</div>';
+  });
+  grid.innerHTML = html;
+}
+
+function pollData() {
+  fetchOnlineVehicles();
+  fetchOnlineCount();
+}
+
+function init() {
+  connectWS();
+  pollData();
+  setInterval(function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      pollData();
+    }
+  }, REFRESH_INTERVAL);
+  initMap();
+}
+
+init();
+</script>
+</body>
+</html>

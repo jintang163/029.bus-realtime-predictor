@@ -1,0 +1,9 @@
+simulator:
+  gateway-host: localhost
+  gateway-port: 9090
+  vehicle-count: 5
+  report-interval-ms: 1000
+
+logging:
+  level:
+    com.bus.predictor: DEBUG

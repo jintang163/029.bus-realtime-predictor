@@ -1,5 +1,8 @@
 package com.bus.predictor.common.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 public enum VehicleStatus {
 
     ONLINE(1, "在线"),
@@ -18,6 +21,7 @@ public enum VehicleStatus {
         this.desc = desc;
     }
 
+    @JsonValue
     public int getCode() {
         return code;
     }
@@ -26,6 +30,7 @@ public enum VehicleStatus {
         return desc;
     }
 
+    @JsonCreator
     public static VehicleStatus fromCode(int code) {
         for (VehicleStatus status : values()) {
             if (status.code == code) {
