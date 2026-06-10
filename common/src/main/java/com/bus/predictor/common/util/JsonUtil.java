@@ -1,10 +1,13 @@
 package com.bus.predictor.common.util;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
+import java.util.List;
 
 public final class JsonUtil {
 
@@ -38,5 +41,14 @@ public final class JsonUtil {
 
     public static ObjectMapper getMapper() {
         return MAPPER;
+    }
+
+    public static <T> List<T> parseList(String json, Class<T> elementClass) {
+        try {
+            return MAPPER.readValue(json, MAPPER.getTypeFactory()
+                    .constructCollectionType(List.class, elementClass));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("JSON list deserialization failed", e);
+        }
     }
 }

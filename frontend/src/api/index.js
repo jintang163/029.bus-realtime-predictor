@@ -26,6 +26,7 @@ export const vehicleApi = {
   getStatus: (vehicleId) => request.get(`/api/vehicle/status/${vehicleId}`),
   getOnlineCount: () => request.get('/api/vehicle/online/count'),
   getPrediction: (vehicleId, routeId) => request.get(`/api/vehicle/prediction/${vehicleId}`, { params: { routeId } }),
+  getStationPrediction: (stationId) => request.get(`/api/vehicle/prediction/station/${stationId}`),
   getTrafficSegment: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/speed`)
 }
 

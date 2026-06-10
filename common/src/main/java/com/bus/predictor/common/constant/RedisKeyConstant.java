@@ -9,4 +9,6 @@ public interface RedisKeyConstant {
     String ROAD_SEGMENT_CONGESTION_PREFIX = "bus:road:congestion:";
     String STATION_INFO_PREFIX = "bus:station:info:";
     String ROUTE_STATION_PREFIX = "bus:route:station:";
+    String ARRIVAL_PREDICTION_PREFIX = "bus:arrival:prediction:";
+    String KALMAN_SPEED_PREFIX = "bus:kalman:speed:";
 }

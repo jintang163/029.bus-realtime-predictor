@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package predictor;
+
+service PredictService {
+  rpc PredictCorrection (PredictRequest) returns (PredictResponse);
+}
+
+message PredictRequest {
+  string segment_id = 1;
+  double current_speed = 2;
+  double historical_speed = 3;
+  double congestion_factor = 4;
+  int32 hour_of_day = 5;
+  int32 day_of_week = 6;
+}
+
+message PredictResponse {
+  double correction_factor = 1;
+  double confidence = 2;
+}

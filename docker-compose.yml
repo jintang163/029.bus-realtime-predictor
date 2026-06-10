@@ -95,6 +95,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bus_predictor?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
       AMAP_KEY: ${AMAP_KEY:-}
       AMAP_ENABLED: ${AMAP_ENABLED:-false}
+      ML_GRPC_HOST: predict-service
+      ML_GRPC_PORT: "50051"
+      ML_GRPC_ENABLED: ${ML_ENABLED:-false}
 
   simulator:
     build:
@@ -105,6 +108,16 @@ services:
     environment:
       SIMULATOR_GATEWAY_HOST: gateway
       SIMULATOR_GATEWAY_PORT: 9090
+
+  predict-service:
+    build:
+      context: ./predict-service
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      GRPC_PORT: "50051"
+      MODEL_PATH: "model/xgboost_arrival.json"
 
   frontend:
     build:

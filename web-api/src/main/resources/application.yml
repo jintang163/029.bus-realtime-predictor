@@ -24,3 +24,9 @@ traffic:
   amap:
     key: ${AMAP_KEY:}
     enabled: ${AMAP_ENABLED:false}
+
+ml:
+  grpc:
+    host: ${ML_GRPC_HOST:localhost}
+    port: ${ML_GRPC_PORT:50051}
+    enabled: ${ML_GRPC_ENABLED:false}

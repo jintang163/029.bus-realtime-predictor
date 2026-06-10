@@ -71,4 +71,10 @@ public class VehicleMonitorController {
         List<ArrivalPrediction> predictions = arrivalPredictService.predict(routeId, vehicleId);
         return Result.success(predictions);
     }
+
+    @GetMapping("/prediction/station/{stationId}")
+    public Result<List<ArrivalPrediction>> predictByStation(@PathVariable String stationId) {
+        List<ArrivalPrediction> predictions = arrivalPredictService.predictForStation(stationId);
+        return Result.success(predictions);
+    }
 }
