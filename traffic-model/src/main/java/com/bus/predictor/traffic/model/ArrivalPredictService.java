@@ -23,7 +23,6 @@ public class ArrivalPredictService {
 
     private static final double DEFAULT_SPEED_MS = 8.33;
     private static final double STOP_PENALTY_SECONDS = 30.0;
-    private static final double FREE_FLOW_SPEED_MS = 13.89;
     private static final double KALMAN_PROCESS_NOISE = 0.01;
     private static final double KALMAN_MEASUREMENT_NOISE = 0.1;
     private static final double HISTORICAL_WEIGHT = 0.3;
@@ -61,13 +60,13 @@ public class ArrivalPredictService {
             return cached;
         }
 
-        VehiclePosition position = vehiclePositionRedisDao.getPosition(vehicleId);
+        com.bus.predictor.common.model.VehiclePosition position = vehiclePositionRedisDao.getPosition(vehicleId);
         if (position == null) {
             return new ArrayList<>();
         }
 
-        List<RouteStationInfo> stations = getRouteStations(routeId);
-        if (stations.isEmpty()) {
+        List<SegmentInfo> routeSegments = filterRouteSegments(roadSegmentManager.getAllSegments(), routeId);
+        if (routeSegments.isEmpty()) {
             return new ArrayList<>();
         }
 
@@ -78,56 +77,75 @@ public class ArrivalPredictService {
 
         double smoothedGpsSpeed = applyKalmanFilter(vehicleId, gpsSpeed);
 
-        List<SegmentInfo> allSegments = roadSegmentManager.getAllSegments();
-        List<SegmentInfo> routeSegments = filterRouteSegments(allSegments, routeId);
-
         LocalDateTime now = LocalDateTime.now();
         int hourOfDay = now.getHour();
         int dayOfWeek = now.getDayOfWeek().getValue();
 
+        int currentOrder = locateCurrentSegmentOrder(currentLat, currentLng, routeSegments);
+        SegmentInfo currentSegment = findSegmentByOrder(routeSegments, currentOrder);
+
+        double remainingDistInCurrentSegment = calculateRemainingDistanceInSegment(
+                currentLat, currentLng, currentSegment);
+
         List<ArrivalPrediction> predictions = new ArrayList<>();
         double accumulatedTime = 0;
-        double prevLng = currentLng;
-        double prevLat = currentLat;
+        double accumulatedDistance = 0;
 
-        for (RouteStationInfo station : stations) {
-            double distance = GeoHashUtil.haversineDistance(
-                    prevLat, prevLng, station.getLatitude(), station.getLongitude());
+        if (currentSegment != null && remainingDistInCurrentSegment > 10) {
+            double speed = calculateEffectiveSpeed(currentSegment, smoothedGpsSpeed, hourOfDay, dayOfWeek);
+            accumulatedTime += remainingDistInCurrentSegment / speed;
+            accumulatedDistance += remainingDistInCurrentSegment;
 
-            SegmentInfo matchedSegment = findMatchingSegment(routeSegments, station.getStationId());
-            double effectiveSpeed = calculateEffectiveSpeed(
-                    matchedSegment, smoothedGpsSpeed, hourOfDay, dayOfWeek);
-
-            double segmentTime = distance / effectiveSpeed;
-            accumulatedTime += segmentTime;
-
-            if (station.getOrder() > 1) {
-                accumulatedTime += STOP_PENALTY_SECONDS;
-            }
-
-            double congestionFactor = matchedSegment != null
-                    ? congestionModel.calculateSegmentCongestion(matchedSegment.getSegmentId())
-                    : congestionModel.calculateCongestion(prevLat, prevLng, station.getLatitude(), station.getLongitude());
+            double congestionFactor = congestionModel.calculateSegmentCongestion(currentSegment.getSegmentId());
 
             predictions.add(ArrivalPrediction.builder()
                     .vehicleId(vehicleId)
                     .routeId(routeId)
-                    .stationId(station.getStationId())
-                    .stationName(station.getStationName())
-                    .distanceToStation(distance)
+                    .stationId(currentSegment.getEndStationId())
+                    .stationName(currentSegment.getEndStationName())
+                    .distanceToStation(remainingDistInCurrentSegment)
                     .estimatedSeconds((int) accumulatedTime)
                     .congestionFactor(congestionFactor)
                     .currentSpeed(smoothedGpsSpeed)
                     .predictTime(System.currentTimeMillis() + (long) (accumulatedTime * 1000))
                     .gpsTime(position.getGpsTime())
                     .build());
+        }
 
-            prevLng = station.getLongitude();
-            prevLat = station.getLatitude();
+        for (int i = 0; i < routeSegments.size(); i++) {
+            SegmentInfo seg = routeSegments.get(i);
+            if (seg.getStationOrder() <= currentOrder) {
+                continue;
+            }
+
+            double segSpeed = calculateEffectiveSpeed(seg, smoothedGpsSpeed, hourOfDay, dayOfWeek);
+            double segTime = seg.getLength() / segSpeed;
+            accumulatedTime += segTime;
+            accumulatedDistance += seg.getLength();
+
+            if (seg.getStationOrder() > currentOrder + 1) {
+                accumulatedTime += STOP_PENALTY_SECONDS;
+            } else if (!predictions.isEmpty()) {
+                accumulatedTime += STOP_PENALTY_SECONDS;
+            }
+
+            double congestionFactor = congestionModel.calculateSegmentCongestion(seg.getSegmentId());
+
+            predictions.add(ArrivalPrediction.builder()
+                    .vehicleId(vehicleId)
+                    .routeId(routeId)
+                    .stationId(seg.getEndStationId())
+                    .stationName(seg.getEndStationName())
+                    .distanceToStation(accumulatedDistance)
+                    .estimatedSeconds((int) accumulatedTime)
+                    .congestionFactor(congestionFactor)
+                    .currentSpeed(smoothedGpsSpeed)
+                    .predictTime(System.currentTimeMillis() + (long) (accumulatedTime * 1000))
+                    .gpsTime(position.getGpsTime())
+                    .build());
         }
 
         predictionCacheDao.savePredictions(vehicleId, routeId, predictions);
-
         return predictions;
     }
 
@@ -160,9 +178,72 @@ public class ArrivalPredictService {
         return results;
     }
 
+    int locateCurrentSegmentOrder(double currentLat, double currentLng, List<SegmentInfo> routeSegments) {
+        SegmentInfo nearest = null;
+        double minDist = Double.MAX_VALUE;
+
+        for (SegmentInfo seg : routeSegments) {
+            double distToStart = GeoHashUtil.haversineDistance(
+                    currentLat, currentLng, seg.getStartLat(), seg.getStartLng());
+            double distToEnd = GeoHashUtil.haversineDistance(
+                    currentLat, currentLng, seg.getEndLat(), seg.getEndLng());
+            double dist = Math.min(distToStart, distToEnd);
+            if (dist < minDist) {
+                minDist = dist;
+                nearest = seg;
+            }
+        }
+
+        if (nearest == null) {
+            return 0;
+        }
+
+        double distToStart = GeoHashUtil.haversineDistance(
+                currentLat, currentLng, nearest.getStartLat(), nearest.getStartLng());
+        double distToEnd = GeoHashUtil.haversineDistance(
+                currentLat, currentLng, nearest.getEndLat(), nearest.getEndLng());
+
+        if (distToStart <= distToEnd) {
+            return nearest.getStationOrder();
+        }
+
+        return nearest.getStationOrder() + 1;
+    }
+
+    private double calculateRemainingDistanceInSegment(double currentLat, double currentLng,
+                                                        SegmentInfo segment) {
+        if (segment == null) {
+            return 0;
+        }
+
+        double distToEnd = GeoHashUtil.haversineDistance(
+                currentLat, currentLng, segment.getEndLat(), segment.getEndLng());
+        double distToStart = GeoHashUtil.haversineDistance(
+                currentLat, currentLng, segment.getStartLat(), segment.getStartLng());
+
+        double progress;
+        double totalLength = segment.getLength();
+        if (totalLength > 0) {
+            progress = Math.max(0, Math.min(1, 1.0 - distToEnd / (distToStart + distToEnd)));
+        } else {
+            progress = distToStart < distToEnd ? 0.5 : 0.8;
+        }
+
+        double remaining = totalLength * (1.0 - progress);
+        return remaining > 0 ? remaining : distToEnd;
+    }
+
+    private SegmentInfo findSegmentByOrder(List<SegmentInfo> routeSegments, int order) {
+        for (SegmentInfo seg : routeSegments) {
+            if (seg.getStationOrder() == order) {
+                return seg;
+            }
+        }
+        return null;
+    }
+
     private double applyKalmanFilter(String vehicleId, double gpsSpeed) {
-        String key = vehicleId;
-        KalmanFilter kf = kalmanFilters.computeIfAbsent(key,
+        KalmanFilter kf = kalmanFilters.computeIfAbsent(vehicleId,
                 k -> new KalmanFilter(KALMAN_PROCESS_NOISE, KALMAN_MEASUREMENT_NOISE));
         return kf.update(gpsSpeed);
     }
@@ -174,7 +255,6 @@ public class ArrivalPredictService {
         }
 
         Double realtimeSpeed = roadSegmentRedisDao.getSegmentSpeed(segment.getSegmentId());
-
         double historicalSpeed = getHistoricalSpeed(segment.getSegmentId(), hourOfDay);
 
         double fusedSpeed;
@@ -214,15 +294,6 @@ public class ArrivalPredictService {
         return 0.0;
     }
 
-    private SegmentInfo findMatchingSegment(List<SegmentInfo> routeSegments, String stationId) {
-        for (SegmentInfo seg : routeSegments) {
-            if (stationId.equals(seg.getStartStationId()) || stationId.equals(seg.getEndStationId())) {
-                return seg;
-            }
-        }
-        return null;
-    }
-
     private List<SegmentInfo> filterRouteSegments(List<SegmentInfo> allSegments, String routeId) {
         List<SegmentInfo> routeSegments = new ArrayList<>();
         for (SegmentInfo seg : allSegments) {
@@ -232,32 +303,5 @@ public class ArrivalPredictService {
         }
         routeSegments.sort((a, b) -> Integer.compare(a.getStationOrder(), b.getStationOrder()));
         return routeSegments;
-    }
-
-    private List<RouteStationInfo> getRouteStations(String routeId) {
-        List<RouteStationInfo> stations = new ArrayList<>();
-
-        List<SegmentInfo> segments = roadSegmentManager.getAllSegments();
-        List<SegmentInfo> routeSegments = filterRouteSegments(segments, routeId);
-        if (!routeSegments.isEmpty()) {
-            for (SegmentInfo seg : routeSegments) {
-                stations.add(new RouteStationInfo(
-                        seg.getStartStationId(), seg.getStartStationName(),
-                        seg.getStationOrder(), seg.getStartLng(), seg.getStartLat()));
-            }
-            SegmentInfo last = routeSegments.get(routeSegments.size() - 1);
-            stations.add(new RouteStationInfo(
-                    last.getEndStationId(), last.getEndStationName(),
-                    last.getStationOrder() + 1, last.getEndLng(), last.getEndLat()));
-            return stations;
-        }
-
-        stations.add(new RouteStationInfo("S001", "火车站", 1, 116.407526, 39.904030));
-        stations.add(new RouteStationInfo("S002", "中山路", 2, 116.410526, 39.908030));
-        stations.add(new RouteStationInfo("S003", "人民广场", 3, 116.415526, 39.912030));
-        stations.add(new RouteStationInfo("S004", "市政府", 4, 116.420526, 39.916030));
-        stations.add(new RouteStationInfo("S005", "科技园", 5, 116.425526, 39.920030));
-
-        return stations;
     }
 }
