@@ -36,7 +36,14 @@ export const trafficApi = {
   getSegmentDetail: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/detail`),
   getSegmentHistory: (segmentId, startTime) => request.get(`/api/traffic/segment/${segmentId}/history`, { params: { startTime } }),
   getSegmentComparison: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/comparison`),
-  getSegmentSpeed: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/speed`)
+  getSegmentSpeed: (segmentId) => request.get(`/api/traffic/segment/${segmentId}/speed`),
+  getDeviationTrend: (days = 7) => request.get('/api/traffic/deviation/trend', { params: { days } }),
+  getHourlyAccuracy: () => request.get('/api/traffic/deviation/hourly'),
+  getSegmentDeviationRanking: (limit = 10) => request.get('/api/traffic/deviation/segment-ranking', { params: { limit } }),
+  getDeviationOverview: () => request.get('/api/traffic/deviation/overview'),
+  getBaselineStatus: () => request.get('/api/traffic/baseline/status'),
+  triggerBaselineTraining: () => request.post('/api/traffic/baseline/train'),
+  getSegmentBaselines: (segmentId) => request.get(`/api/traffic/baseline/segment/${segmentId}`)
 }
 
 export const lineApi = {

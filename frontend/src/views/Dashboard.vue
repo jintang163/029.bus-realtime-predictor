@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
     <el-row :gutter="20" class="stats-row">
-      <el-col :span="6">
+      <el-col :span="4">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon online-bg">
             <el-icon :size="28"><Monitor /></el-icon>
@@ -12,7 +12,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon offline-bg">
             <el-icon :size="28"><SwitchButton /></el-icon>
@@ -23,7 +23,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-icon total-bg">
             <el-icon :size="28"><Van /></el-icon>
@@ -34,15 +34,83 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon rate-bg">
-            <el-icon :size="28"><Timer /></el-icon>
+          <div class="stat-icon accuracy-bg">
+            <el-icon :size="28"><Aim /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value">{{ refreshRate }}</div>
-            <div class="stat-label">数据刷新频率</div>
+            <div class="stat-value">{{ accuracyRate }}<span class="stat-unit">%</span></div>
+            <div class="stat-label">
+              预测准确率
+              <el-tag v-if="accuracyChange > 0" type="success" size="small" effect="plain" class="change-tag">
+                ↑ {{ accuracyChange }}%
+              </el-tag>
+              <el-tag v-else-if="accuracyChange < 0" type="danger" size="small" effect="plain" class="change-tag">
+                ↓ {{ Math.abs(accuracyChange) }}%
+              </el-tag>
+              <el-tag v-else type="info" size="small" effect="plain" class="change-tag">--</el-tag>
+            </div>
           </div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <div class="stat-icon" :class="amapHealthy ? 'api-ok-bg' : 'api-fail-bg'">
+            <el-icon :size="28"><Connection /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">
+              <el-tag :type="amapHealthy ? 'success' : 'danger'" size="small">
+                {{ amapHealthy ? '正常' : '已降级' }}
+              </el-tag>
+            </div>
+            <div class="stat-label">第三方路况API</div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="4">
+        <el-card shadow="hover" class="stat-card">
+          <div class="stat-icon baseline-bg">
+            <el-icon :size="28"><Cpu /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value-row">
+              <div class="stat-value-sm">{{ baselineSegments }}</div>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="training"
+                :disabled="training"
+                @click="triggerTraining"
+                class="train-btn">
+                {{ training ? '训练中...' : '重训基线' }}
+              </el-button>
+            </div>
+            <div class="stat-label">自学习基线覆盖路段</div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" class="chart-row">
+      <el-col :span="16">
+        <el-card shadow="hover" class="chart-card">
+          <template #header>
+            <div class="chart-header">
+              <span class="chart-title">预测偏差趋势（近7日准确率）</span>
+              <el-tag type="info" size="small">总预测: {{ totalPredictions }} 次</el-tag>
+            </div>
+          </template>
+          <div ref="trendChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover" class="chart-card">
+          <template #header>
+            <span class="chart-title">24小时准确率分布</span>
+          </template>
+          <div ref="hourlyChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
     </el-row>
@@ -62,23 +130,38 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import * as echarts from 'echarts'
 import L from 'leaflet'
-import { Monitor, SwitchButton, Van, Timer } from '@element-plus/icons-vue'
-import { vehicleApi } from '../api/index.js'
-import { statusTag, formatDistance } from '../utils/format.js'
+import {
+  Monitor, SwitchButton, Van, Aim, Timer, Connection, Cpu
+} from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { vehicleApi, trafficApi } from '../api/index.js'
+import { statusTag } from '../utils/format.js'
 
 const onlineCount = ref(0)
 const offlineCount = ref(0)
 const totalCount = ref(0)
-const refreshRate = ref('--')
+const accuracyRate = ref('--')
+const accuracyChange = ref(0)
+const totalPredictions = ref(0)
+const amapHealthy = ref(true)
+const baselineSegments = ref(0)
+const training = ref(false)
 const wsConnected = ref(false)
+
+const trendChartRef = ref(null)
+const hourlyChartRef = ref(null)
+let trendChart = null
+let hourlyChart = null
 
 let map = null
 const markers = new Map()
 let ws = null
 let wsReconnectTimer = null
 let pollTimer = null
+let deviationTimer = null
 let lastMessageTime = null
 
 function initMap() {
@@ -142,6 +225,145 @@ function updateStats(vehicles) {
   totalCount.value = vehicles.length
 }
 
+function initTrendChart() {
+  if (!trendChartRef.value) return
+  trendChart = echarts.init(trendChartRef.value)
+  trendChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['准确率', '平均偏差率'], top: 0 },
+    grid: { left: 50, right: 50, top: 40, bottom: 30 },
+    xAxis: {
+      type: 'category',
+      data: [],
+      axisLabel: { fontSize: 11 }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '准确率(%)',
+        min: 0,
+        max: 100,
+        axisLabel: { formatter: '{value}%' }
+      },
+      {
+        type: 'value',
+        name: '偏差率',
+        min: 0,
+        axisLabel: { formatter: '{value}' }
+      }
+    ],
+    series: [
+      {
+        name: '准确率',
+        type: 'line',
+        smooth: true,
+        data: [],
+        itemStyle: { color: '#67c23a' },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(103,194,58,0.3)' },
+            { offset: 1, color: 'rgba(103,194,58,0.05)' }
+          ])
+        }
+      },
+      {
+        name: '平均偏差率',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        data: [],
+        itemStyle: { color: '#e6a23c' }
+      }
+    ]
+  })
+  window.addEventListener('resize', () => trendChart && trendChart.resize())
+}
+
+function initHourlyChart() {
+  if (!hourlyChartRef.value) return
+  hourlyChart = echarts.init(hourlyChartRef.value)
+  hourlyChart.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 45, right: 20, top: 20, bottom: 30 },
+    xAxis: {
+      type: 'category',
+      data: Array.from({ length: 24 }, (_, i) => i + '时'),
+      axisLabel: { fontSize: 10, interval: 2 }
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: { formatter: '{value}%', fontSize: 10 }
+    },
+    series: [
+      {
+        type: 'bar',
+        data: [],
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#409eff' },
+            { offset: 1, color: '#79bbff' }
+          ]),
+          borderRadius: [4, 4, 0, 0]
+        }
+      }
+    ]
+  })
+  window.addEventListener('resize', () => hourlyChart && hourlyChart.resize())
+}
+
+async function loadDeviationData() {
+  try {
+    const overview = await trafficApi.getDeviationOverview()
+    if (overview) {
+      const trend = overview.dailyTrend || {}
+      accuracyRate.value = trend.overallAccuracy ?? '--'
+      accuracyChange.value = trend.accuracyChange ?? 0
+      totalPredictions.value = trend.totalPredictions ?? 0
+
+      if (trendChart && trend.dates && trend.dates.length > 0) {
+        trendChart.setOption({
+          xAxis: { data: trend.dates.map(d => d.substring(5)) },
+          series: [
+            { data: trend.accuracyRates || [] },
+            { data: (trend.avgDeviationRates || []).map(v => +(v * 100).toFixed(1)) }
+          ]
+        })
+      }
+
+      if (hourlyChart && overview.hourlyAccuracy) {
+        hourlyChart.setOption({
+          series: [{ data: overview.hourlyAccuracy.accuracyRates || [] }]
+        })
+      }
+
+      const baseline = overview.baselineStatus || {}
+      amapHealthy.value = baseline.amapApiHealthy !== false
+      baselineSegments.value = baseline.coveredSegments ?? 0
+    }
+  } catch (e) {
+    console.warn('Load deviation data failed:', e)
+  }
+}
+
+async function triggerTraining() {
+  try {
+    training.value = true
+    const res = await trafficApi.triggerBaselineTraining()
+    if (res && res.success) {
+      ElMessage.success(`基线训练完成: 处理 ${res.processedSegments} 个路段, 耗时 ${res.durationSeconds}s`)
+    } else {
+      ElMessage.warning(res?.message || '训练启动失败')
+    }
+  } catch (e) {
+    ElMessage.error('训练失败: ' + (e.message || '未知错误'))
+  } finally {
+    training.value = false
+    loadDeviationData()
+  }
+}
+
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsUrl = `${protocol}//${window.location.host}/ws/vehicle`
@@ -158,13 +380,6 @@ function connectWebSocket() {
       if (Array.isArray(vehicles)) {
         updateMarkers(vehicles)
         updateStats(vehicles)
-
-        const now = Date.now()
-        if (lastMessageTime) {
-          const interval = now - lastMessageTime
-          refreshRate.value = (interval / 1000).toFixed(1) + 's'
-        }
-        lastMessageTime = now
       }
     } catch (e) {
       console.error('Failed to parse WS message:', e)
@@ -200,22 +415,30 @@ async function pollOnlineCount() {
       totalCount.value = res.total ?? (onlineCount.value + offlineCount.value)
     }
   } catch {
-    // fallback poll silently fails
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   initMap()
   connectWebSocket()
   pollOnlineCount()
+  await nextTick()
+  initTrendChart()
+  initHourlyChart()
+  loadDeviationData()
+
   pollTimer = setInterval(pollOnlineCount, 5000)
+  deviationTimer = setInterval(loadDeviationData, 60000)
 })
 
 onUnmounted(() => {
   if (ws) ws.close()
   if (wsReconnectTimer) clearTimeout(wsReconnectTimer)
   if (pollTimer) clearInterval(pollTimer)
+  if (deviationTimer) clearInterval(deviationTimer)
   if (map) map.remove()
+  if (trendChart) trendChart.dispose()
+  if (hourlyChart) hourlyChart.dispose()
   markers.clear()
 })
 </script>
@@ -228,8 +451,13 @@ onUnmounted(() => {
   gap: 20px;
 }
 
-.stats-row {
+.stats-row,
+.chart-row {
   flex-shrink: 0;
+}
+
+.chart-row {
+  margin-top: 0;
 }
 
 .stat-card {
@@ -270,6 +498,22 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #e6a23c, #eebe77);
 }
 
+.accuracy-bg {
+  background: linear-gradient(135deg, #722ed1, #b37feb);
+}
+
+.api-ok-bg {
+  background: linear-gradient(135deg, #52c41a, #95de64);
+}
+
+.api-fail-bg {
+  background: linear-gradient(135deg, #fa8c16, #ffc069);
+}
+
+.baseline-bg {
+  background: linear-gradient(135deg, #13c2c2, #5cdbd3);
+}
+
 .stat-info {
   flex: 1;
   min-width: 0;
@@ -282,10 +526,65 @@ onUnmounted(() => {
   line-height: 1.2;
 }
 
+.stat-value-sm {
+  font-size: 24px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1.2;
+}
+
+.stat-unit {
+  font-size: 16px;
+  font-weight: 500;
+  margin-left: 2px;
+  color: #606266;
+}
+
+.stat-value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.train-btn {
+  flex-shrink: 0;
+}
+
 .stat-label {
   font-size: 13px;
   color: #909399;
   margin-top: 4px;
+}
+
+.change-tag {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.chart-card {
+  height: 100%;
+}
+
+.chart-card :deep(.el-card__body) {
+  padding: 12px 16px;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chart-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.chart-container {
+  width: 100%;
+  height: 260px;
 }
 
 .map-card {

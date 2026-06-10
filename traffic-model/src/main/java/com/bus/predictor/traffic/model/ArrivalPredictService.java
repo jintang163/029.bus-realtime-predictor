@@ -27,6 +27,8 @@ public class ArrivalPredictService {
     private static final double KALMAN_MEASUREMENT_NOISE = 0.1;
     private static final double HISTORICAL_WEIGHT = 0.3;
     private static final double REALTIME_WEIGHT = 0.7;
+    private static final double BASELINE_WEIGHT = 0.4;
+    private static final double REALTIME_WITH_BASELINE_WEIGHT = 0.6;
 
     private final VehiclePositionRedisDao vehiclePositionRedisDao;
     private final RoadSegmentRedisDao roadSegmentRedisDao;
@@ -35,6 +37,8 @@ public class ArrivalPredictService {
     private final MlCorrectionClient mlCorrectionClient;
     private final ArrivalPredictionCacheDao predictionCacheDao;
     private final CongestionModel congestionModel;
+    private final SelfLearningBaselineService selfLearningBaselineService;
+    private final PredictionDeviationService predictionDeviationService;
 
     private final Map<String, KalmanFilter> kalmanFilters = new ConcurrentHashMap<>();
 
@@ -44,7 +48,9 @@ public class ArrivalPredictService {
                                  SegmentSpeedHistoryMapper segmentSpeedHistoryMapper,
                                  MlCorrectionClient mlCorrectionClient,
                                  ArrivalPredictionCacheDao predictionCacheDao,
-                                 CongestionModel congestionModel) {
+                                 CongestionModel congestionModel,
+                                 SelfLearningBaselineService selfLearningBaselineService,
+                                 PredictionDeviationService predictionDeviationService) {
         this.vehiclePositionRedisDao = vehiclePositionRedisDao;
         this.roadSegmentRedisDao = roadSegmentRedisDao;
         this.roadSegmentManager = roadSegmentManager;
@@ -52,6 +58,8 @@ public class ArrivalPredictService {
         this.mlCorrectionClient = mlCorrectionClient;
         this.predictionCacheDao = predictionCacheDao;
         this.congestionModel = congestionModel;
+        this.selfLearningBaselineService = selfLearningBaselineService;
+        this.predictionDeviationService = predictionDeviationService;
     }
 
     public List<ArrivalPrediction> predict(String routeId, String vehicleId) {
@@ -146,6 +154,7 @@ public class ArrivalPredictService {
         }
 
         predictionCacheDao.savePredictions(vehicleId, routeId, predictions);
+        predictionDeviationService.recordPrediction(vehicleId, routeId, predictions);
         return predictions;
     }
 
@@ -254,15 +263,37 @@ public class ArrivalPredictService {
             return Math.max(smoothedGpsSpeed, 1.0);
         }
 
-        Double realtimeSpeed = roadSegmentRedisDao.getSegmentSpeed(segment.getSegmentId());
+        boolean amapHealthy = roadSegmentRedisDao.isAmapApiHealthy();
+
+        Double realtimeSpeed = amapHealthy ? roadSegmentRedisDao.getSegmentSpeed(segment.getSegmentId()) : null;
+        Double baselineSpeed = selfLearningBaselineService.getEffectiveBaselineSpeed(
+                segment.getSegmentId(), dayOfWeek, hourOfDay);
         double historicalSpeed = getHistoricalSpeed(segment.getSegmentId(), hourOfDay);
 
         double fusedSpeed;
-        if (realtimeSpeed != null && realtimeSpeed > 0.5) {
+
+        if (!amapHealthy && baselineSpeed != null && baselineSpeed > 0.5) {
             if (historicalSpeed > 0.5) {
+                fusedSpeed = BASELINE_WEIGHT * baselineSpeed + (1 - BASELINE_WEIGHT) * historicalSpeed;
+            } else {
+                fusedSpeed = baselineSpeed;
+            }
+            log.debug("Amap API degraded, using self-learning baseline for segment {}: {:.2f} m/s",
+                    segment.getSegmentId(), fusedSpeed);
+        } else if (realtimeSpeed != null && realtimeSpeed > 0.5) {
+            if (baselineSpeed != null && baselineSpeed > 0.5) {
+                fusedSpeed = REALTIME_WITH_BASELINE_WEIGHT * realtimeSpeed
+                        + (1 - REALTIME_WITH_BASELINE_WEIGHT) * baselineSpeed;
+            } else if (historicalSpeed > 0.5) {
                 fusedSpeed = REALTIME_WEIGHT * realtimeSpeed + HISTORICAL_WEIGHT * historicalSpeed;
             } else {
                 fusedSpeed = realtimeSpeed;
+            }
+        } else if (baselineSpeed != null && baselineSpeed > 0.5) {
+            if (historicalSpeed > 0.5) {
+                fusedSpeed = BASELINE_WEIGHT * baselineSpeed + (1 - BASELINE_WEIGHT) * historicalSpeed;
+            } else {
+                fusedSpeed = baselineSpeed;
             }
         } else if (historicalSpeed > 0.5) {
             fusedSpeed = historicalSpeed;

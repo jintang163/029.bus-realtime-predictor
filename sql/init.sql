@@ -173,3 +173,47 @@ INSERT IGNORE INTO t_line_station (line_id, station_id, station_order, distance_
 ('L003', 'S004', 1, 0, 2200, 180),
 ('L003', 'S003', 2, 2200, 3500, 260),
 ('L003', 'S009', 3, 5700, 0, 0);
+
+CREATE TABLE IF NOT EXISTS t_prediction_deviation (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    vehicle_id VARCHAR(32) NOT NULL,
+    route_id VARCHAR(32) NOT NULL,
+    segment_id VARCHAR(64) NOT NULL,
+    station_id VARCHAR(32),
+    predicted_seconds INT NOT NULL,
+    actual_seconds INT NOT NULL,
+    deviation_seconds INT NOT NULL,
+    deviation_rate DOUBLE NOT NULL,
+    predicted_speed DOUBLE,
+    actual_speed DOUBLE,
+    predict_time DATETIME NOT NULL,
+    arrival_time DATETIME NOT NULL,
+    hour_of_day INT NOT NULL,
+    day_of_week INT NOT NULL,
+    is_accurate TINYINT DEFAULT 0,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_vehicle_time (vehicle_id, arrival_time),
+    INDEX idx_segment_time (segment_id, arrival_time),
+    INDEX idx_route_time (route_id, arrival_time),
+    INDEX idx_hour_day (hour_of_day, day_of_week)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_segment_baseline_speed (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    segment_id VARCHAR(64) NOT NULL,
+    line_id VARCHAR(32),
+    day_of_week INT NOT NULL,
+    hour_of_day INT NOT NULL,
+    baseline_speed DOUBLE NOT NULL,
+    baseline_congestion DOUBLE DEFAULT 1.0,
+    sample_count INT DEFAULT 0,
+    std_dev DOUBLE DEFAULT 0,
+    speed_source INT DEFAULT 2,
+    train_time DATETIME NOT NULL,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_segment_day_hour (segment_id, day_of_week, hour_of_day),
+    INDEX idx_segment_id (segment_id),
+    INDEX idx_line_id (line_id),
+    INDEX idx_day_hour (day_of_week, hour_of_day)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

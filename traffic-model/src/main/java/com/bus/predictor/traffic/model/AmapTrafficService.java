@@ -1,8 +1,10 @@
 package com.bus.predictor.traffic.model;
 
 import com.bus.predictor.common.util.JsonUtil;
+import com.bus.predictor.dal.redis.RoadSegmentRedisDao;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class AmapTrafficService {
@@ -19,6 +22,7 @@ public class AmapTrafficService {
     private static final Logger log = LoggerFactory.getLogger(AmapTrafficService.class);
 
     private static final String AMAP_TRAFFIC_URL = "https://restapi.amap.com/v3/traffic/status/rectangle";
+    private static final int MAX_CONSECUTIVE_FAILURES = 3;
 
     private final RestTemplate restTemplate;
 
@@ -27,6 +31,11 @@ public class AmapTrafficService {
 
     @Value("${traffic.amap.enabled:false}")
     private boolean amapEnabled;
+
+    @Autowired
+    private RoadSegmentRedisDao roadSegmentRedisDao;
+
+    private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
 
     public AmapTrafficService() {
         this.restTemplate = new RestTemplate();
@@ -47,20 +56,40 @@ public class AmapTrafficService {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
 
             if (response.getBody() == null) {
+                handleApiFailure("Empty response body");
                 return Collections.emptyList();
             }
 
             Map<String, Object> result = JsonUtil.fromJson(response.getBody(), Map.class);
             if (result == null || !"1".equals(String.valueOf(result.get("status")))) {
-                log.warn("Amap traffic API returned error: {}", result != null ? result.get("info") : "null response");
+                handleApiFailure(result != null ? String.valueOf(result.get("info")) : "null response");
                 return Collections.emptyList();
             }
 
+            consecutiveFailures.set(0);
+            roadSegmentRedisDao.setAmapApiHealthy(true);
             return parseTrafficResponse(result);
         } catch (Exception e) {
-            log.error("Failed to fetch amap traffic data", e);
+            handleApiFailure(e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    private void handleApiFailure(String errorMsg) {
+        int failures = consecutiveFailures.incrementAndGet();
+        log.warn("Amap traffic API failed (consecutive: {}): {}", failures, errorMsg);
+        if (failures >= MAX_CONSECUTIVE_FAILURES) {
+            log.error("Amap traffic API marked as unhealthy after {} consecutive failures", failures);
+            roadSegmentRedisDao.setAmapApiHealthy(false);
+        }
+    }
+
+    public boolean isApiHealthy() {
+        return roadSegmentRedisDao.isAmapApiHealthy();
+    }
+
+    public int getConsecutiveFailures() {
+        return consecutiveFailures.get();
     }
 
     @SuppressWarnings("unchecked")
