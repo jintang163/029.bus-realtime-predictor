@@ -1,0 +1,96 @@
+<view class="container">
+  <view class="banner-section">
+    <swiper class="banner-swiper" indicator-dots autoplay circular
+            indicator-color="rgba(255,255,255,0.5)" indicator-active-color="#fff">
+      <swiper-item wx:for="{{banners}}" wx:key="index" bindtap="onBannerTap" data-idx="{{index}}">
+        <view class="banner-item" style="background: {{item.color}}">
+          <view class="banner-content">
+            <text class="banner-title">{{item.title}}</text>
+            <text class="banner-desc">{{item.desc}}</text>
+          </view>
+          <view class="banner-icon">🚌</view>
+        </view>
+      </swiper-item>
+    </swiper>
+  </view>
+
+  <view class="search-bar card" bindtap="goSearch">
+    <view class="search-icon">🔍</view>
+    <text class="search-placeholder">搜索线路或站点...</text>
+    <view class="search-btn">查询</view>
+  </view>
+
+  <view class="section-title flex-row flex-between">
+    <text class="section-text">🔥 热门线路</text>
+    <text class="link-text" bindtap="goSearch">更多 ›</text>
+  </view>
+
+  <view class="hot-routes-grid">
+    <view wx:for="{{hotRoutes}}" wx:key="line" class="route-card"
+          bindtap="goEta" data-line="{{item.line}}" data-station="人民广场">
+      <view class="route-number">{{item.line}}</view>
+      <view class="route-name">{{item.name}}</view>
+      <view class="route-desc text-small text-secondary">{{item.desc}}</view>
+      <view class="route-action">查询 →</view>
+    </view>
+  </view>
+
+  <view class="section-title mt-32 flex-row flex-between">
+    <text class="section-text">📍 附近站点</text>
+    <text wx:if="{{loadingLocation}}" class="text-small text-secondary">定位中...</text>
+    <text wx:else class="link-text" bindtap="loadNearbyStations">刷新</text>
+  </view>
+
+  <view wx:if="{{nearbyStations.length === 0 && !loadingLocation}}" class="card">
+    <view class="empty-tip flex-row flex-center">
+      <text style="margin-right: 12rpx;">💡</text>
+      <text class="text-secondary">开启位置服务，查看附近公交站</text>
+    </view>
+  </view>
+
+  <view wx:else class="station-list">
+    <view wx:for="{{nearbyStations}}" wx:key="stationId" class="station-item card"
+          bindtap="goEta" data-station="{{item.stationName}}" data-line="5">
+      <view class="flex-row flex-between">
+        <view class="flex-row">
+          <view class="station-icon">🚏</view>
+          <view class="flex-col">
+            <text class="station-name">{{item.stationName}}</text>
+            <text class="text-small text-secondary mt-8">途经: 5路 · 12路 · 28路</text>
+          </view>
+        </view>
+        <view class="station-distance tag tag-blue">{{item.distanceM ? (item.distanceM > 1000 ? (item.distanceM/1000).toFixed(1) + 'km' : item.distanceM + 'm') : '附近'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-title mt-32">
+    <text class="section-text">⭐ 热门站点</text>
+  </view>
+
+  <view class="hot-stations card">
+    <view wx:for="{{hotStations}}" wx:key="*this" class="station-tag"
+          bindtap="goEta" data-station="{{item}}" data-line="5">
+      {{item}}
+    </view>
+  </view>
+
+  <view class="quick-actions card mt-24">
+    <view class="action-item flex-col flex-center" bindtap="goEta" data-line="5" data-station="人民广场">
+      <view class="action-icon action-blue">⏱️</view>
+      <text class="text-small mt-8">实时预报</text>
+    </view>
+    <view class="action-item flex-col flex-center" bindtap="goStopBoard">
+      <view class="action-icon action-green">📺</view>
+      <text class="text-small mt-8">电子站牌</text>
+    </view>
+    <view class="action-item flex-col flex-center" bindtap="goSearch">
+      <view class="action-icon action-orange">🔄</view>
+      <text class="text-small mt-8">换乘查询</text>
+    </view>
+    <view class="action-item flex-col flex-center" bindtap="loadNearbyStations">
+      <view class="action-icon action-purple">📍</view>
+      <text class="text-small mt-8">附近站点</text>
+    </view>
+  </view>
+</view>

@@ -1,6 +1,7 @@
 package com.bus.predictor.webapi.config;
 
 import com.bus.predictor.webapi.websocket.ArrivalWebSocketHandler;
+import com.bus.predictor.webapi.websocket.EtaWebSocketHandler;
 import com.bus.predictor.webapi.websocket.TrafficHeatmapWebSocketHandler;
 import com.bus.predictor.webapi.websocket.VehiclePositionWebSocketHandler;
 import org.springframework.context.annotation.Configuration;
@@ -15,13 +16,16 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final VehiclePositionWebSocketHandler vehiclePositionWebSocketHandler;
     private final TrafficHeatmapWebSocketHandler trafficHeatmapWebSocketHandler;
     private final ArrivalWebSocketHandler arrivalWebSocketHandler;
+    private final EtaWebSocketHandler etaWebSocketHandler;
 
     public WebSocketConfig(VehiclePositionWebSocketHandler vehiclePositionWebSocketHandler,
                            TrafficHeatmapWebSocketHandler trafficHeatmapWebSocketHandler,
-                           ArrivalWebSocketHandler arrivalWebSocketHandler) {
+                           ArrivalWebSocketHandler arrivalWebSocketHandler,
+                           EtaWebSocketHandler etaWebSocketHandler) {
         this.vehiclePositionWebSocketHandler = vehiclePositionWebSocketHandler;
         this.trafficHeatmapWebSocketHandler = trafficHeatmapWebSocketHandler;
         this.arrivalWebSocketHandler = arrivalWebSocketHandler;
+        this.etaWebSocketHandler = etaWebSocketHandler;
     }
 
     @Override
@@ -31,6 +35,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(trafficHeatmapWebSocketHandler, "/ws/traffic")
                 .setAllowedOriginPatterns("*");
         registry.addHandler(arrivalWebSocketHandler, "/ws/arrival")
+                .setAllowedOriginPatterns("*");
+        registry.addHandler(etaWebSocketHandler, "/ws/eta")
                 .setAllowedOriginPatterns("*");
     }
 }

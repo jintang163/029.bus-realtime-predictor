@@ -1,0 +1,123 @@
+<view class="search-page">
+  <view class="search-header">
+    <view class="search-input-wrap">
+      <text class="search-icon">🔍</text>
+      <input class="search-input" placeholder="搜索线路号或站点名"
+             value="{{keyword}}" bindinput="onInput"
+             focus="{{true}}" confirm-type="search" />
+      <text wx:if="{{keyword}}" class="clear-icon" bindtap="clearInput">✕</text>
+    </view>
+  </view>
+
+  <view class="search-tabs">
+    <view class="tab-item {{searchType === 'line' ? 'active' : ''}}" data-type="line" bindtap="switchType">线路</view>
+    <view class="tab-item {{searchType === 'station' ? 'active' : ''}}" data-type="station" bindtap="switchType">站点</view>
+  </view>
+
+  <view wx:if="{{selectedLine}}" class="line-detail-card">
+    <view class="flex-row flex-between">
+      <view class="flex-row">
+        <view class="line-badge">{{selectedLine.line}}</view>
+        <view class="flex-col" style="margin-left:16rpx;">
+          <text class="text-large font-bold">{{selectedLine.name}}</text>
+          <text class="text-small text-secondary">{{selectedLine.desc}}</text>
+        </view>
+      </view>
+      <view class="direction-toggle" bindtap="toggleDirection">
+        {{direction === 'up' ? '上行 ↑' : '下行 ↓'}}
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{selectedLine && !selectedStation}}" class="select-station-tip">
+    请在下方选择下车站点：
+  </view>
+
+  <view class="page-content">
+    <view wx:if="{{showHistory && history.length > 0}}" class="history-section card">
+      <view class="section-header flex-row flex-between">
+        <text class="font-bold">🕐 历史搜索</text>
+        <text class="text-small text-secondary" bindtap="clearHistory">清空</text>
+      </view>
+      <view class="history-tags">
+        <view wx:for="{{history}}" wx:key="value" class="history-tag"
+              bindtap="clickHistory" data-item="{{item}}">
+          {{item.label || item.value}}
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{!showResults}}" class="suggestions">
+      <view wx:if="{{searchType === 'line' || !showHistory}}" class="suggest-section">
+        <view class="section-header">热门线路</view>
+        <view class="line-list">
+          <view wx:for="{{filteredLines}}" wx:key="line" class="line-item card"
+                bindtap="selectLine" data-line="{{item}}">
+            <view class="flex-row flex-between">
+              <view class="flex-row">
+                <view class="line-num">{{item.line}}</view>
+                <view class="flex-col" style="margin-left:20rpx;">
+                  <text class="font-bold">{{item.name}}</text>
+                  <text class="text-small text-secondary">{{item.desc}}</text>
+                </view>
+              </view>
+              <text class="text-primary">{{item.stations}}站 ›</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{searchType === 'station' || !showHistory}}" class="suggest-section mt-24">
+        <view class="section-header">热门站点</view>
+        <view class="station-tags">
+          <view wx:for="{{filteredStations}}" wx:key="*this" class="station-tag"
+                bindtap="selectStation" data-station="{{item}}">
+            🚏 {{item}}
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:else class="search-results">
+      <view wx:if="{{filteredLines.length > 0 && (searchType === 'line' || !selectedLine)}}" class="result-section">
+        <view class="section-header">线路 ({{filteredLines.length}})</view>
+        <view class="line-list">
+          <view wx:for="{{filteredLines}}" wx:key="line" class="line-item card"
+                bindtap="selectLine" data-line="{{item}}">
+            <view class="flex-row flex-between">
+              <view class="flex-row">
+                <view class="line-num">{{item.line}}</view>
+                <view class="flex-col" style="margin-left:20rpx;">
+                  <text class="font-bold">{{item.name}}</text>
+                  <text class="text-small text-secondary">{{item.desc}}</text>
+                </view>
+              </view>
+              <text class="text-primary">{{item.stations}}站 ›</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{filteredStations.length > 0}}" class="result-section mt-24">
+        <view class="section-header">站点 ({{filteredStations.length}})</view>
+        <view class="station-tags">
+          <view wx:for="{{filteredStations}}" wx:key="*this" class="station-tag"
+                bindtap="selectStation" data-station="{{item}}">
+            🚏 {{item}}
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{filteredLines.length === 0 && filteredStations.length === 0}}" class="empty">
+        <view class="empty-icon">🔍</view>
+        <text>未找到相关结果</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{selectedLine && selectedStation}}" class="search-footer">
+    <button class="btn-primary full-btn" bindtap="doSearch">
+      查询 {{selectedLine.line}}路 {{selectedStation}} 预报
+    </button>
+  </view>
+</view>

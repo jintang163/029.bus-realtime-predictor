@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "到站预报",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

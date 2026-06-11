@@ -20,4 +20,5 @@ public interface RedisKeyConstant {
     String AMAP_API_HEALTH_KEY = "bus:api:amap:health";
     String BASELINE_TRAIN_STATUS_KEY = "bus:baseline:train:status";
     String VEHICLE_SEGMENT_ENTRY_PREFIX = "bus:vehicle:segment:entry:";
+    String ETA_QUERY_CACHE_PREFIX = "bus:eta:query:";
 }

@@ -1,0 +1,115 @@
+<view class="container">
+  <view class="card query-card">
+    <view class="flex-row flex-between" bindtap="goSearch">
+      <view class="flex-row">
+        <view class="line-badge">{{lineCode}}</view>
+        <view class="flex-col" style="margin-left: 20rpx;">
+          <text class="text-large font-bold">{{stationName}}</text>
+          <view class="flex-row mt-8">
+            <view class="tag {{direction === 'up' ? 'tag-blue' : 'tag-green'}}">{{directionText}}</view>
+            <text class="text-small text-secondary">{{fromCache ? '缓存数据' : '实时计算'}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="text-primary">切换 ›</view>
+    </view>
+
+    <view class="divider"></view>
+
+    <view class="flex-row flex-between">
+      <view class="flex-row">
+        <button class="btn-outline small-btn" bindtap="toggleDirection">换方向</button>
+        <button class="btn-outline small-btn" style="margin-left: 16rpx;" bindtap="toggleWebSocket">
+          {{useWebSocket ? (wsConnected ? '● 实时' : '○ 连接中') : '○ 轮询'}}
+        </button>
+      </view>
+      <button class="btn-primary small-btn" bindtap="refresh">刷新</button>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="card">
+    <view class="loading">
+      <view class="custom-loading">
+        <view class="loading-spinner"></view>
+        <text class="text-secondary mt-16">加载中...</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{error}}" class="card">
+    <view class="empty">
+      <view class="empty-icon">⚠️</view>
+      <text>{{error}}</text>
+      <button class="btn-primary mt-24" bindtap="loadEta">重新加载</button>
+    </view>
+  </view>
+
+  <view wx:elif="{{vehicles.length === 0}}" class="card">
+    <view class="empty">
+      <view class="empty-icon">🚌</view>
+      <text>暂无到站预报信息</text>
+      <text class="text-small text-secondary mt-8">请稍后再试</text>
+    </view>
+  </view>
+
+  <block wx:else>
+    <view wx:for="{{vehicles}}" wx:key="vehicleId" class="card vehicle-card">
+      <view class="vehicle-header flex-row flex-between">
+        <view class="flex-row flex-center">
+          <view class="order-badge order-{{index + 1}}">{{index + 1}}</view>
+          <view class="flex-col" style="margin-left: 20rpx;">
+            <view class="flex-row flex-center">
+              <text class="text-xl countdown-{{item.countdownSeconds <= 60 ? 'urgent' : item.countdownSeconds <= 180 ? 'soon' : 'normal'}}">
+                {{item.estimatedMinutes}}
+              </text>
+              <text class="text-large countdown-unit">分钟</text>
+            </view>
+            <text class="text-small text-secondary">{{item.countdownText}}</text>
+          </view>
+        </view>
+
+        <view class="crowd-info flex-col flex-center">
+          <view class="crowd-icon {{item.crowdClass}}">{{item.crowdIcon}}</view>
+          <view class="tag {{item.crowdClass}} mt-8">{{item.crowdText}}</view>
+        </view>
+      </view>
+
+      <view class="divider"></view>
+
+      <view class="vehicle-detail flex-row flex-between">
+        <view class="detail-item">
+          <text class="text-secondary text-small">距本站</text>
+          <view class="detail-value">{{item.distanceText}}</view>
+          <view class="text-small text-secondary">{{item.distanceMetersText}}</view>
+        </view>
+
+        <view class="detail-item flex-center">
+          <text class="text-secondary text-small">车牌号</text>
+          <view class="detail-value" bindtap="copyVehicleId" data-id="{{item.vehicleId}}">
+            {{item.licensePlate || '未知'}}
+          </view>
+          <view class="text-small text-secondary">{{item.speedText}}</view>
+        </view>
+
+        <view class="detail-item flex-center">
+          <text class="text-secondary text-small">状态</text>
+          <view class="detail-value">
+            <view wx:if="{{item.countdownSeconds <= 0}}" class="tag tag-green">到站</view>
+            <view wx:elif="{{item.countdownSeconds <= 60}}" class="tag tag-red">即将</view>
+            <view wx:else class="tag tag-blue">行驶中</view>
+          </view>
+          <view class="text-small text-secondary">{{item.currentSpeed ? '在线' : '离线'}}</view>
+        </view>
+      </view>
+
+      <view class="progress-bar mt-16">
+        <view class="progress-fill progress-{{index + 1}}" 
+              style="width: {{Math.max(10, 100 - (item.distanceStationsAway || 0) * 20)}}%"></view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{lastUpdateTime}}" class="update-time text-secondary text-small flex-center">
+    最后更新: {{lastUpdateTime / 1000}}  ·  下拉可刷新
+  </view>
+</view>

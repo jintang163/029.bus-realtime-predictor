@@ -1,0 +1,118 @@
+<view class="stopboard-page">
+  <view class="board-header">
+    <view class="header-bg"></view>
+    <view class="header-content">
+      <view class="header-top flex-row flex-between">
+        <view class="station-info">
+          <view class="station-label">当前站点</view>
+          <view class="station-name">{{stationName}}</view>
+        </view>
+        <view class="clock-info flex-col flex-center">
+          <view class="clock-time">{{currentTime}}</view>
+          <view class="ws-status status-{{wsConnected ? 'ok' : 'warn'}}">
+            <view class="status-dot"></view>
+            {{wsStatus}}
+          </view>
+        </view>
+      </view>
+
+      <view class="line-info flex-row flex-between mt-24">
+        <view class="flex-row flex-center">
+          <view class="big-line-num">{{lineCode}}路</view>
+          <view class="direction-badge dir-{{direction}}">{{directionText}}</view>
+        </view>
+        <view class="setting-btn" bindtap="toggleSettings">⚙ 设置</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showSettings}}" class="settings-panel">
+    <view class="settings-title">快速切换线路</view>
+    <view class="quick-items">
+      <view wx:for="{{quickLines}}" wx:key="*this" class="quick-btn"
+            bindtap="selectQuickLine" data-line="{{item}}">
+        {{item}}路
+      </view>
+    </view>
+    <view class="settings-title mt-16">快速切换站点</view>
+    <view class="quick-items">
+      <view wx:for="{{quickStations}}" wx:key="*this" class="quick-btn station-btn"
+            bindtap="selectQuickStation" data-station="{{item}}">
+        {{item}}
+      </view>
+    </view>
+  </view>
+
+  <view class="board-content">
+    <view class="marquee-bar">
+      <view class="marquee-text">
+        <text wx:if="{{marqueeIndex === 0}}">欢迎使用智能公交电子站牌系统  🚌</text>
+        <text wx:elif="{{marqueeIndex === 1}}">实时预报 · 精准定位 · 绿色出行优先  🌿</text>
+        <text wx:else>请排队上车，文明礼让，注意安全  👋</text>
+      </view>
+    </view>
+
+    <view class="eta-section">
+      <view wx:if="{{displayVehicles.length === 0}}" class="no-vehicles">
+        <view class="no-vehicles-icon">🚌</view>
+        <text class="no-vehicles-text">暂无到站车辆信息</text>
+        <text class="no-vehicles-sub">请稍候或切换线路/站点</text>
+      </view>
+
+      <view wx:else class="vehicles-list">
+        <view wx:for="{{displayVehicles}}" wx:key="vehicleId"
+              class="vehicle-row vh-{{index + 1}}">
+          <view class="vh-rank rank-{{index + 1}}">{{index + 1}}</view>
+
+          <view class="vh-main">
+            <view class="vh-top flex-row">
+              <view class="vh-time">
+                <text class="vh-minutes">{{item.estimatedMinutes || 0}}</text>
+                <text class="vh-unit">分钟</text>
+              </view>
+              <view class="vh-plate">{{item.licensePlate || '---'}}</view>
+            </view>
+
+            <view class="vh-bottom flex-row flex-between">
+              <view class="vh-info">
+                <text class="vh-countdown">{{item.countdownText}}</text>
+                <text class="vh-divider">·</text>
+                <text class="vh-distance">{{item.distanceText}}</text>
+              </view>
+              <view class="vh-crowd crowd-{{item.crowdLevel}}">
+                {{item.crowdText}}
+              </view>
+            </view>
+          </view>
+
+          <view class="vh-progress">
+            <view class="vh-bar">
+              <view class="vh-bar-fill bar-{{index + 1}}"
+                    style="width: {{100 - (item.distanceStationsAway || 0) * 15}}%"></view>
+            </view>
+            <view class="vh-progress-text">
+              {{item.distanceMetersText}}
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="waiting-section">
+      <view class="next-vehicles flex-row flex-center">
+        <text class="text-secondary">后续车辆:</text>
+        <view wx:for="{{vehicles}}" wx:key="vehicleId" wx:for-index="idx" wx:for-item="vh"
+              wx:if="{{idx >= 3}}" class="waiting-tag">
+          {{vh.estimatedMinutes || 0}}分
+        </view>
+        <text wx:if="{{vehicles.length <= 3}}" class="text-secondary ml-8">暂无更多</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="board-footer">
+    <view class="footer-btn" bindtap="toggleDirection">
+      🔄 {{direction === 'up' ? '切换下行' : '切换上行'}}
+    </view>
+  </view>
+</view>

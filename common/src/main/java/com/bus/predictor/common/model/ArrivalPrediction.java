@@ -34,4 +34,10 @@ public class ArrivalPrediction implements Serializable {
     private Long predictTime;
 
     private Long gpsTime;
+
+    private Integer distanceStationsAway;
+
+    private Integer crowdLevel;
+
+    private String licensePlate;
 }

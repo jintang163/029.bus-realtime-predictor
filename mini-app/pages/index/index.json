@@ -1,0 +1,5 @@
+{
+  "navigationBarTitleText": "公交到站预报",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}
