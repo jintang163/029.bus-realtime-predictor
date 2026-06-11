@@ -1,7 +1,6 @@
 package com.bus.predictor.traffic.model;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.bus.predictor.common.model.ArrivalPrediction;
 import com.bus.predictor.common.model.EtaResponse;
 import com.bus.predictor.common.model.VehiclePosition;
 import com.bus.predictor.common.util.GeoHashUtil;
@@ -84,12 +83,17 @@ public class EtaService {
     private EtaResponse calculateEta(String lineCode, String stationName, String direction) {
         log.info("Calculating ETA for lineCode={}, stationName={}, direction={}", lineCode, stationName, direction);
 
-        LineEntity line = findLineByCode(lineCode);
+        int dirValue = "down".equalsIgnoreCase(direction) ? 1 : 0;
+        boolean isDown = dirValue == 1;
+
+        LineEntity line = findLineByCodeAndDirection(lineCode, dirValue);
+        if (line == null) {
+            line = findLineByCodeAndDirection(lineCode, 1 - dirValue);
+        }
         if (line == null) {
             return buildEmptyResponse(lineCode, stationName, direction, "线路不存在");
         }
 
-        int dirValue = "down".equalsIgnoreCase(direction) ? 1 : 0;
         StationEntity targetStation = findStationByName(stationName);
         if (targetStation == null) {
             return buildEmptyResponse(lineCode, stationName, direction, "站点不存在");
@@ -117,6 +121,10 @@ public class EtaService {
             return buildEmptyResponse(lineCode, stationName, direction, "站点不在该线路上");
         }
 
+        int maxOrder = lineStations.stream()
+                .mapToInt(LineStationEntity::getStationOrder)
+                .max().orElse(1);
+
         List<VehicleInfoEntity> lineVehicles = vehicleInfoMapper.selectList(
                 new LambdaQueryWrapper<VehicleInfoEntity>()
                         .eq(VehicleInfoEntity::getRouteId, line.getLineId())
@@ -137,7 +145,7 @@ public class EtaService {
         }
 
         if (onlinePositions.isEmpty()) {
-            return buildSimulationResponse(line, targetStation, lineStations, targetStationOrder, direction);
+            return buildSimulationResponse(line, targetStation, lineStations, targetStationOrder, direction, maxOrder);
         }
 
         List<EtaVehicleCandidate> candidates = new ArrayList<>();
@@ -150,7 +158,13 @@ public class EtaService {
             int currentStationOrder = estimateCurrentStationOrder(vp, lineStations);
             if (currentStationOrder < 0) continue;
 
-            int stationsAway = targetStationOrder - currentStationOrder;
+            int stationsAway;
+            if (isDown) {
+                stationsAway = currentStationOrder - targetStationOrder;
+            } else {
+                stationsAway = targetStationOrder - currentStationOrder;
+            }
+
             if (stationsAway < 0) continue;
 
             int estimatedSeconds;
@@ -168,7 +182,8 @@ public class EtaService {
                     estimatedSeconds = (int) (distanceMeters / speed);
                 }
             } else {
-                distanceMeters = calculateDistance(lineStations, currentStationOrder, vp, targetStation, targetStationOrder);
+                distanceMeters = calculateDistance(lineStations, currentStationOrder, targetStationOrder,
+                        isDown, vp, targetStation);
                 estimatedSeconds = stationsAway * DEFAULT_AVG_SECONDS_PER_STATION;
 
                 double avgSpeed = vp.getSpeed() != null && vp.getSpeed() > 1.0 ? vp.getSpeed() : 5.56;
@@ -190,7 +205,7 @@ public class EtaService {
         }
 
         if (candidates.isEmpty()) {
-            return buildSimulationResponse(line, targetStation, lineStations, targetStationOrder, direction);
+            return buildSimulationResponse(line, targetStation, lineStations, targetStationOrder, direction, maxOrder);
         }
 
         candidates.sort(Comparator.comparingInt(EtaVehicleCandidate::getEstimatedSeconds));
@@ -222,7 +237,8 @@ public class EtaService {
     }
 
     private EtaResponse buildSimulationResponse(LineEntity line, StationEntity targetStation,
-                                                 List<LineStationEntity> lineStations, int targetOrder, String direction) {
+                                                 List<LineStationEntity> lineStations, int targetOrder,
+                                                 String direction, int maxOrder) {
         log.debug("No real-time vehicles available, generating simulation ETA for line {}", line.getLineCode());
 
         List<EtaResponse.EtaVehicle> vehicles = new ArrayList<>();
@@ -231,12 +247,16 @@ public class EtaService {
         int baseInterval = line.getIntervalMinutes() != null ? line.getIntervalMinutes() : 5;
         baseInterval = Math.max(baseInterval, 3);
 
+        boolean isDown = "down".equalsIgnoreCase(direction);
+        int stationsBeforeTarget = isDown ? (maxOrder - targetOrder) : targetOrder;
+        stationsBeforeTarget = Math.max(stationsBeforeTarget, 1);
+
         for (int i = 0; i < MAX_VEHICLES; i++) {
             int estimatedMinutes = baseInterval * (i + 1) + random.nextInt(-1, 2);
             estimatedMinutes = Math.max(estimatedMinutes, 1);
             int estimatedSeconds = estimatedMinutes * 60 + random.nextInt(0, 59);
 
-            int stationsAway = Math.min(estimatedMinutes / 3, Math.max(targetOrder, 1));
+            int stationsAway = Math.min(estimatedMinutes / 3, stationsBeforeTarget);
             stationsAway = Math.max(stationsAway, i + 1);
 
             int crowdLevel = 1 + random.nextInt(3);
@@ -277,12 +297,13 @@ public class EtaService {
                 .build();
     }
 
-    private LineEntity findLineByCode(String lineCode) {
+    private LineEntity findLineByCodeAndDirection(String lineCode, int dirValue) {
         if (lineCode == null || lineCode.isEmpty()) return null;
 
         List<LineEntity> lines = lineMapper.selectList(
                 new LambdaQueryWrapper<LineEntity>()
                         .eq(LineEntity::getStatus, 1)
+                        .eq(LineEntity::getDirection, dirValue)
         );
 
         for (LineEntity line : lines) {
@@ -333,11 +354,6 @@ public class EtaService {
         int nearestOrder = -1;
         double minDist = Double.MAX_VALUE;
 
-        Map<String, LineStationEntity> stationMap = new HashMap<>();
-        for (LineStationEntity ls : lineStations) {
-            stationMap.put(ls.getStationId(), ls);
-        }
-
         List<StationEntity> stationEntities = stationMapper.selectBatchIds(
                 lineStations.stream().map(LineStationEntity::getStationId).collect(Collectors.toList())
         );
@@ -363,8 +379,9 @@ public class EtaService {
         return nearestOrder;
     }
 
-    private double calculateDistance(List<LineStationEntity> lineStations, int fromOrder,
-                                      VehiclePosition fromPos, StationEntity toStation, int toOrder) {
+    private double calculateDistance(List<LineStationEntity> lineStations, int currentOrder,
+                                      int targetOrder, boolean isDown,
+                                      VehiclePosition fromPos, StationEntity toStation) {
         double total = 0;
 
         Map<String, StationEntity> stationInfoMap = new HashMap<>();
@@ -375,28 +392,50 @@ public class EtaService {
             stationInfoMap.put(s.getStationId(), s);
         }
 
-        LineStationEntity fromLs = lineStations.stream()
-                .filter(ls -> ls.getStationOrder().equals(fromOrder)).findFirst().orElse(null);
-        if (fromLs != null) {
-            StationEntity fromStation = stationInfoMap.get(fromLs.getStationId());
-            if (fromStation != null && fromStation.getLatitude() != null) {
+        LineStationEntity currentLs = lineStations.stream()
+                .filter(ls -> ls.getStationOrder().equals(currentOrder)).findFirst().orElse(null);
+        if (currentLs != null) {
+            StationEntity currentStation = stationInfoMap.get(currentLs.getStationId());
+            if (currentStation != null && currentStation.getLatitude() != null) {
                 total += GeoHashUtil.haversineDistance(
                         fromPos.getLatitude(), fromPos.getLongitude(),
-                        fromStation.getLatitude(), fromStation.getLongitude()
+                        currentStation.getLatitude(), currentStation.getLongitude()
                 );
             }
         }
 
-        for (int i = fromOrder; i < toOrder; i++) {
-            LineStationEntity curr = lineStations.stream()
-                    .filter(ls -> ls.getStationOrder().equals(i)).findFirst().orElse(null);
-            LineStationEntity next = lineStations.stream()
-                    .filter(ls -> ls.getStationOrder().equals(i + 1)).findFirst().orElse(null);
+        if (isDown) {
+            for (int i = currentOrder; i > targetOrder; i--) {
+                LineStationEntity curr = lineStations.stream()
+                        .filter(ls -> ls.getStationOrder().equals(i)).findFirst().orElse(null);
+                LineStationEntity prev = lineStations.stream()
+                        .filter(ls -> ls.getStationOrder().equals(i - 1)).findFirst().orElse(null);
 
-            if (curr != null && next != null) {
-                if (curr.getDistanceToNext() != null) {
+                if (prev != null && prev.getDistanceToNext() != null) {
+                    total += prev.getDistanceToNext();
+                } else if (curr != null && prev != null) {
+                    StationEntity currS = stationInfoMap.get(curr.getStationId());
+                    StationEntity prevS = stationInfoMap.get(prev.getStationId());
+                    if (currS != null && prevS != null && currS.getLatitude() != null && prevS.getLatitude() != null) {
+                        total += GeoHashUtil.haversineDistance(
+                                currS.getLatitude(), currS.getLongitude(),
+                                prevS.getLatitude(), prevS.getLongitude()
+                        );
+                    } else {
+                        total += 800;
+                    }
+                }
+            }
+        } else {
+            for (int i = currentOrder; i < targetOrder; i++) {
+                LineStationEntity curr = lineStations.stream()
+                        .filter(ls -> ls.getStationOrder().equals(i)).findFirst().orElse(null);
+                LineStationEntity next = lineStations.stream()
+                        .filter(ls -> ls.getStationOrder().equals(i + 1)).findFirst().orElse(null);
+
+                if (curr != null && curr.getDistanceToNext() != null) {
                     total += curr.getDistanceToNext();
-                } else {
+                } else if (curr != null && next != null) {
                     StationEntity currS = stationInfoMap.get(curr.getStationId());
                     StationEntity nextS = stationInfoMap.get(next.getStationId());
                     if (currS != null && nextS != null && currS.getLatitude() != null && nextS.getLatitude() != null) {

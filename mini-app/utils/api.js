@@ -15,17 +15,28 @@ class ApiService {
           'Content-Type': 'application/json'
         }, header),
         success: (res) => {
-          if (res.statusCode === 200) {
+          if (res.statusCode === 429) {
+            wx.showToast({
+              title: '请求过于频繁，请稍后再试',
+              icon: 'none'
+            });
+            reject({
+              code: 429,
+              message: '请求过于频繁，请稍后再试'
+            });
+            return;
+          }
+
+          if (res.statusCode >= 200 && res.statusCode < 300) {
             if (res.data && res.data.code === 0) {
               resolve(res.data.data);
-            } else if (res.data && res.data.code === 429) {
-              wx.showToast({
-                title: '请求过于频繁，请稍后再试',
-                icon: 'none'
-              });
+            } else if (res.data && res.data.code !== 0) {
               reject(res.data);
             } else {
-              reject(res.data);
+              reject({
+                code: -1,
+                message: '响应格式异常'
+              });
             }
           } else {
             reject({

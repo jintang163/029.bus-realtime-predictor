@@ -14,11 +14,11 @@ public class Result<T> {
     private T data;
 
     public static <T> Result<T> success(T data) {
-        return new Result<>(200, "success", data);
+        return new Result<>(0, "success", data);
     }
 
     public static <T> Result<T> fail(String message) {
-        return new Result<>(500, message, null);
+        return new Result<>(-1, message, null);
     }
 
     public static <T> Result<T> fail(int code, String message) {
