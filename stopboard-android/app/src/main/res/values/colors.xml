@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#0A1628</color>
+    <color name="bg_card">#14213D</color>
+    <color name="line_code">#00D4FF</color>
+    <color name="line_code_glow">#00D4FF</color>
+
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="text_tertiary">#64748B</color>
+
+    <color name="time_text">#22D3EE</color>
+    <color name="countdown_text">#38BDF8</color>
+
+    <color name="divider_dark">#1E293B</color>
+    <color name="progress_bg">#1E293B</color>
+
+    <color name="vehicle_1">#FF6B6B</color>
+    <color name="vehicle_1_glow">#FF6B6B</color>
+    <color name="vehicle_2">#FFB547</color>
+    <color name="vehicle_2_glow">#FFB547</color>
+    <color name="vehicle_3">#4ADE80</color>
+    <color name="vehicle_3_glow">#4ADE80</color>
+
+    <color name="crowd_empty">#4ADE80</color>
+    <color name="crowd_medium">#FACC15</color>
+    <color name="crowd_crowded">#F87171</color>
+
+    <color name="status_connected">#22C55E</color>
+    <color name="status_connecting">#EAB308</color>
+    <color name="status_disconnected">#EF4444</color>
+
+    <color name="accent_blue">#3B82F6</color>
+</resources>
