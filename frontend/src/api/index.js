@@ -107,7 +107,9 @@ export const monitorApi = {
   getSystem: () => request.get('/api/monitor/system'),
   getBusiness: () => request.get('/api/monitor/business'),
   getApiStats: () => request.get('/api/monitor/api-stats'),
-  getOverview: () => request.get('/api/monitor/overview')
+  getOverview: () => request.get('/api/monitor/overview'),
+  getDeviationDistribution: () => request.get('/api/monitor/deviation-distribution'),
+  getApiResponseDistribution: () => request.get('/api/monitor/api-response-distribution')
 }
 
 export const trajectoryApi = {

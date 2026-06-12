@@ -10,11 +10,11 @@ alerting:
 rule_files:
 
 scrape_configs:
-  - job_name: 'bus-predictor-webapi'
+  - job_name: 'bus-predictor-web-api'
     metrics_path: '/actuator/prometheus'
     scrape_interval: 5s
     static_configs:
-      - targets: ['webapi:8080']
+      - targets: ['web-api:8080']
 
   - job_name: 'prometheus'
     static_configs:

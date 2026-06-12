@@ -614,10 +614,10 @@ function handleAlertClick(alert) {
 async function loadMonitorData() {
   try {
     const [overview, devOverview, alertStatsData, activeAlertsData] = await Promise.all([
-      monitorApi.getOverview(),
-      trafficApi.getDeviationOverview(),
-      alertApi.getStats(),
-      alertApi.getActive(10)
+      monitorApi.getOverview().catch(() => null),
+      trafficApi.getDeviationOverview().catch(() => null),
+      alertApi.getStats().catch(() => null),
+      alertApi.getActive(10).catch(() => null)
     ])
 
     if (overview) {
@@ -636,9 +636,64 @@ async function loadMonitorData() {
       activeAlerts.value = activeAlertsData
     }
 
-    updateCharts()
+    updateSystemChart()
   } catch (e) {
     console.warn('Load monitor data failed:', e)
+  }
+}
+
+async function loadDeviationData() {
+  try {
+    const data = await monitorApi.getDeviationDistribution()
+    if (data && deviationChart) {
+      deviationChart.setOption({
+        xAxis: { data: data.labels || [] },
+        series: [{
+          data: data.avgDeviations || [],
+          itemStyle: {
+            color: (params) => {
+              const val = params.value || 0
+              if (val < 30) return '#67c23a'
+              if (val < 60) return '#e6a23c'
+              return '#f56c6c'
+            },
+            borderRadius: [4, 4, 0, 0]
+          }
+        }]
+      })
+    }
+  } catch (e) {
+    console.warn('Load deviation data failed:', e)
+  }
+}
+
+async function loadApiResponseData() {
+  try {
+    const data = await monitorApi.getApiResponseDistribution()
+    if (data && apiChart) {
+      const labels = data.labels || []
+      const values = data.values || []
+      apiChart.setOption({
+        xAxis: { data: labels },
+        series: [
+          {
+            name: '请求数',
+            type: 'bar',
+            data: values,
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: '#409eff' },
+                { offset: 1, color: 'rgba(64,158,255,0.3)' }
+              ]),
+              borderRadius: [4, 4, 0, 0]
+            },
+            barWidth: '50%'
+          }
+        ]
+      })
+    }
+  } catch (e) {
+    console.warn('Load api response data failed:', e)
   }
 }
 
@@ -650,24 +705,18 @@ function initCharts() {
       grid: { left: 45, right: 20, top: 30, bottom: 30 },
       xAxis: {
         type: 'category',
-        data: Array.from({ length: 12 }, (_, i) => i * 5 + '分钟前'),
+        data: [],
         axisLabel: { fontSize: 10 }
       },
       yAxis: {
         type: 'value',
-        name: '偏差秒数',
+        name: '偏差率(%)',
         axisLabel: { fontSize: 10 }
       },
       series: [{
         type: 'bar',
         data: [],
-        itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#f56c6c' },
-            { offset: 1, color: '#79bbff' }
-          ]),
-          borderRadius: [4, 4, 0, 0]
-        }
+        itemStyle: { borderRadius: [4, 4, 0, 0] }
       }]
     })
   }
@@ -706,12 +755,11 @@ function initCharts() {
     apiChart = echarts.init(apiChartRef.value)
     apiChart.setOption({
       tooltip: { trigger: 'axis' },
-      legend: { data: ['平均', 'P95', 'P99'], top: 0, itemWidth: 12, itemHeight: 12 },
-      grid: { left: 45, right: 20, top: 35, bottom: 30 },
+      grid: { left: 45, right: 20, top: 30, bottom: 30 },
       xAxis: {
         type: 'category',
-        data: ['0s', '100ms', '500ms', '1s', '2s', '3s', '>5s'],
-        axisLabel: { fontSize: 10 }
+        data: [],
+        axisLabel: { fontSize: 10, rotate: 30 }
       },
       yAxis: {
         type: 'value',
@@ -720,26 +768,16 @@ function initCharts() {
       },
       series: [
         {
-          name: '平均',
-          type: 'line',
-          smooth: true,
+          name: '请求数',
+          type: 'bar',
           data: [],
-          itemStyle: { color: '#409eff' },
-          areaStyle: { color: 'rgba(64,158,255,0.15)' }
-        },
-        {
-          name: 'P95',
-          type: 'line',
-          smooth: true,
-          data: [],
-          itemStyle: { color: '#e6a23c' }
-        },
-        {
-          name: 'P99',
-          type: 'line',
-          smooth: true,
-          data: [],
-          itemStyle: { color: '#f56c6c' }
+          itemStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#409eff' },
+              { offset: 1, color: 'rgba(64,158,255,0.3)' }
+            ]),
+            borderRadius: [4, 4, 0, 0]
+          }
         }
       ]
     })
@@ -752,14 +790,7 @@ function initCharts() {
   })
 }
 
-function updateCharts() {
-  if (deviationChart) {
-    const mockData = Array.from({ length: 12 }, () => Math.floor(Math.random() * 180 + 30))
-    deviationChart.setOption({
-      series: [{ data: mockData }]
-    })
-  }
-
+function updateSystemChart() {
   if (systemChart) {
     const cpu = systemMetrics.value.cpu?.processCpuLoad || 0
     const mem = systemMetrics.value.memory?.heapUsedPercent || 0
@@ -767,16 +798,6 @@ function updateCharts() {
       series: [
         { data: [{ value: cpu, name: 'CPU使用率' }, { value: 100 - cpu, name: 'CPU空闲' }] },
         { data: [{ value: mem, name: '内存使用率' }, { value: 100 - mem, name: '内存空闲' }] }
-      ]
-    })
-  }
-
-  if (apiChart) {
-    apiChart.setOption({
-      series: [
-        { data: [120, 340, 520, 280, 150, 80, 30] },
-        { data: [80, 220, 380, 220, 120, 60, 20] },
-        { data: [30, 80, 150, 90, 50, 25, 10] }
       ]
     })
   }
@@ -915,9 +936,18 @@ onMounted(async () => {
 
   await nextTick()
   initCharts()
-  await loadMonitorData()
+
+  await Promise.all([
+    loadMonitorData(),
+    loadDeviationData(),
+    loadApiResponseData()
+  ])
 
   monitorTimer = setInterval(loadMonitorData, 10000)
+  deviationTimer = setInterval(() => {
+    loadDeviationData()
+    loadApiResponseData()
+  }, 30000)
 })
 
 onUnmounted(() => {
