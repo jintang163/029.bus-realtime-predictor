@@ -52,6 +52,18 @@ const routes = [
     name: 'StopBoard',
     component: () => import('../views/StopBoard.vue'),
     meta: { title: '电子站牌', icon: 'Monitor' }
+  },
+  {
+    path: '/operation',
+    name: 'OperationDashboard',
+    component: () => import('../views/OperationDashboard.vue'),
+    meta: { title: '运维大屏', icon: 'DataAnalysis' }
+  },
+  {
+    path: '/alert-rules',
+    name: 'AlertRules',
+    component: () => import('../views/AlertRules.vue'),
+    meta: { title: '告警规则', icon: 'Bell' }
   }
 ]
 

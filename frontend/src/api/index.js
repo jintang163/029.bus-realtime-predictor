@@ -87,3 +87,31 @@ export const stopboardApi = {
   getStationInfo: (stationId) => request.get(`/api/stopboard/${stationId}/info`),
   getStationLines: (stationId) => request.get(`/api/stopboard/${stationId}/lines`)
 }
+
+export const alertApi = {
+  getStats: () => request.get('/api/alert/stats'),
+  getActive: (limit = 20) => request.get('/api/alert/active', { params: { limit } }),
+  getOverview: () => request.get('/api/alert/overview'),
+  getRuleList: () => request.get('/api/alert/rule/list'),
+  getRule: (id) => request.get(`/api/alert/rule/${id}`),
+  createRule: (data) => request.post('/api/alert/rule', data),
+  updateRule: (data) => request.put('/api/alert/rule', data),
+  deleteRule: (id) => request.delete(`/api/alert/rule/${id}`),
+  toggleRule: (id) => request.put(`/api/alert/rule/${id}/toggle`),
+  getRecordList: (params) => request.get('/api/alert/record/list', { params }),
+  acknowledge: (id, operator) => request.put(`/api/alert/record/${id}/acknowledge`, null, { params: { operator } }),
+  resolve: (id) => request.put(`/api/alert/record/${id}/resolve`)
+}
+
+export const monitorApi = {
+  getSystem: () => request.get('/api/monitor/system'),
+  getBusiness: () => request.get('/api/monitor/business'),
+  getApiStats: () => request.get('/api/monitor/api-stats'),
+  getOverview: () => request.get('/api/monitor/overview')
+}
+
+export const trajectoryApi = {
+  getVehicleTrajectory: (vehicleId, params) => request.get(`/api/trajectory/vehicle/${vehicleId}`, { params }),
+  getReplayData: (vehicleId, date) => request.get(`/api/trajectory/vehicle/${vehicleId}/replay`, { params: { date } }),
+  getSummary: (params) => request.get('/api/trajectory/summary', { params })
+}

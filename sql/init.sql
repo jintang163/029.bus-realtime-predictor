@@ -217,3 +217,53 @@ CREATE TABLE IF NOT EXISTS t_segment_baseline_speed (
     INDEX idx_line_id (line_id),
     INDEX idx_day_hour (day_of_week, hour_of_day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_alert_rule (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    rule_name VARCHAR(100) NOT NULL,
+    rule_type VARCHAR(32) NOT NULL,
+    target_type VARCHAR(32) NOT NULL,
+    target_value VARCHAR(100),
+    threshold DOUBLE NOT NULL,
+    operator VARCHAR(10) NOT NULL,
+    duration INT DEFAULT 60,
+    notification_type VARCHAR(32) NOT NULL,
+    notification_target VARCHAR(500),
+    enabled TINYINT DEFAULT 1,
+    description VARCHAR(500),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_rule_type (rule_type),
+    INDEX idx_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS t_alert_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    rule_id BIGINT NOT NULL,
+    rule_name VARCHAR(100),
+    alert_type VARCHAR(32) NOT NULL,
+    alert_level VARCHAR(16) NOT NULL,
+    target_id VARCHAR(64),
+    target_name VARCHAR(200),
+    alert_value DOUBLE,
+    threshold DOUBLE,
+    operator VARCHAR(10),
+    message TEXT,
+    status VARCHAR(16) DEFAULT 'ACTIVE',
+    acknowledged_by VARCHAR(64),
+    acknowledged_time DATETIME,
+    resolved_time DATETIME,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_alert_type (alert_type),
+    INDEX idx_status (status),
+    INDEX idx_create_time (create_time),
+    INDEX idx_rule_id (rule_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO t_alert_rule (rule_name, rule_type, target_type, threshold, operator, duration, notification_type, notification_target, enabled, description) VALUES
+('预测偏差过大', 'PREDICTION_DEVIATION', 'LINE', 300.0, '>', 60, 'DINGTALK', '', 1, '单线路预测偏差超过5分钟持续60秒告警'),
+('车辆离线', 'VEHICLE_OFFLINE', 'VEHICLE', 300.0, '>', 120, 'DINGTALK', '', 1, '车辆GPS数据超过5分钟未更新告警'),
+('路段严重拥堵', 'CONGESTION', 'SEGMENT', 3.0, '>', 180, 'DINGTALK', '', 1, '路段拥堵系数超过3.0持续3分钟告警'),
+('API响应过慢', 'API_RESPONSE', 'API', 3000.0, '>', 60, 'DINGTALK', '', 1, 'API响应时间超过3秒持续60秒告警'),
+('设备在线率过低', 'ONLINE_RATE', 'SYSTEM', 80.0, '<', 300, 'DINGTALK', '', 1, '设备在线率低于80%持续5分钟告警');

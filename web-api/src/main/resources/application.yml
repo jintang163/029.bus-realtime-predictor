@@ -11,6 +11,31 @@ spring:
     host: localhost
     port: 6379
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,loggers
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: bus-predictor-webapi
+    export:
+      prometheus:
+        enabled: true
+
+notification:
+  dingtalk:
+    webhook: ${DINGTALK_WEBHOOK:}
+    secret: ${DINGTALK_SECRET:}
+    enabled: ${DINGTALK_ENABLED:false}
+  sms:
+    enabled: ${SMS_ENABLED:false}
+    api-url: ${SMS_API_URL:}
+    api-key: ${SMS_API_KEY:}
+
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   configuration:
